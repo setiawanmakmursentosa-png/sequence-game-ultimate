@@ -15,7 +15,15 @@ import { getFirestore, doc, setDoc, onSnapshot, updateDoc, arrayUnion, arrayRemo
  * * Setelah proyek dibuat, daftarkan aplikasi web, lalu salin objek
  * 'firebaseConfig' dan tempelkan di bawah ini, menggantikan 'null'.
  */
-const YOUR_FIREBASE_CONFIG = null; // <<< TEMPELKAN KONFIGURASI FIREBASE DI SINI >>>
+const YOUR_FIREBASE_CONFIG = {
+  // >>> PASTIKAN SEMUA NILAI DI DALAM TANDA KUTIP DENGAN NILAI UNIK ASLI ANDA <<<
+  apiKey: "AIzaSy_Ini_Adalah_Kunci_Unik_Anda_12345",
+  authDomain: "sequence-game-anda.firebaseapp.com",
+  projectId: "sequence-game-anda",
+  storageBucket: "sequence-game-anda.appspot.com",
+  messagingSenderId: "9876543210",
+  appId: "1:9876543210:web:abcdefg"
+}; 
 
 // =========================================================================
 // INISIALISASI FIREBASE (JANGAN DIUBAH)
@@ -24,7 +32,10 @@ const YOUR_FIREBASE_CONFIG = null; // <<< TEMPELKAN KONFIGURASI FIREBASE DI SINI
 let app, db, auth;
 let firebaseInitialized = false;
 
-if (YOUR_FIREBASE_CONFIG) {
+if (YOUR_FIREBASE_CONFIG.apiKey.includes('AIzaSy_Ini_Adalah_Kunci_Unik_Anda')) {
+    console.warn("Konfigurasi Firebase masih placeholder. Fitur online dinonaktifkan.");
+    firebaseInitialized = false;
+} else if (YOUR_FIREBASE_CONFIG) {
   try {
     app = initializeApp(YOUR_FIREBASE_CONFIG);
     db = getFirestore(app);
