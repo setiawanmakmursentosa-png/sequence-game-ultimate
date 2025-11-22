@@ -317,9 +317,11 @@ function SequenceGameInternal() {
     const [message, setMessage] = useState("");
     const [scores, setScores] = useState({0:0, 1:0});
     const [winningLines, setWinningLines] = useState([]); 
-    const [scoredIds, setScoredIds] = new Set(); 
+    // FIX: Mengganti inisialisasi state dari new Set() menjadi useState(new Set())
+    const [scoredIds, setScoredIds] = useState(new Set()); 
     const [playerName, setPlayerName] = useState("Player 1");
-    const [playerNamesList, setPlayerNamesList] = {};
+    // FIX: Menggunakan useState untuk playerNamesList
+    const [playerNamesList, setPlayerNamesList] = useState({});
     const [loadingText, setLoadingText] = useState("");
     const [unreadCount, setUnreadCount] = useState(0);
     const [ghostChips, setGhostChips] = useState([]);
@@ -332,7 +334,7 @@ function SequenceGameInternal() {
     const [visualPlayedCard, setVisualPlayedCard] = useState(null); 
     const audioCtxRef = useRef(null);
     
-    // --- Initializer for playerNamesList to prevent undefined issues
+    // --- Initializer for playerNamesList
     useEffect(() => {
         setPlayerNamesList({
             0: playerName, 
@@ -482,7 +484,9 @@ function SequenceGameInternal() {
                 if (appMode === 'online-share' && data.players?.length === data.maxPlayers) setAppMode('online-game');
                 setBoard(safeParse(data.board, [])); setDeck(safeParse(data.deck, [])); setHands(safeParse(data.hands, {}));
                 setTurn(data.turn); setWinner(data.winner); setLastMove(data.lastMove); setScores(data.scores || {0:0, 1:0}); 
-                setWinningLines(safeParse(data.winningLines, [])); setScoredIds(new Set(safeParse(data.scoredIds, [])));
+                setWinningLines(safeParse(data.winningLines, [])); 
+                // FIX: Memastikan scoredIds diperlakukan sebagai Set saat di-load dari Firestore
+                setScoredIds(new Set(safeParse(data.scoredIds, [])));
                 if(data.playerNames) setPlayerNamesList(data.playerNames);
                 const newChats = data.chats || []; if (newChats.length > chats.length && !showChat) setUnreadCount(prev => prev + 1); setChats(newChats);
                 if (data.lastPlayedCard && appMode === 'online-game') {
@@ -577,6 +581,7 @@ function SequenceGameInternal() {
         }
 
         let newScores = {...scores}, newWinningLines = [...winningLines], team = getTeam(turn), hasWon = false;
+        // FIX: Menggunakan state scoredIds yang sudah benar
         let currentScoredIds = scoredIds; 
         
         if (!remove) {
