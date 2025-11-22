@@ -19,16 +19,17 @@ import { getFirestore, doc, setDoc, onSnapshot, updateDoc, arrayUnion, arrayRemo
  * Saat Anda menaruh proyek di website asli (bukan preview ini), Anda perlu
  * membuat proyek di Firebase Console (https://console.firebase.google.com/).
  * * Setelah proyek dibuat, daftarkan aplikasi web, lalu salin objek
- * 'firebaseConfig' dan tempelkan di bawah ini, menggantikan 'null'.
+ * 'firebaseConfig' dan tempelkan di bawah ini.
  */
+// >>> KUNCI ASLI DARI FIREBASE ANDA TELAH DITEMPELKAN DI SINI <<<
 const YOUR_FIREBASE_CONFIG = {
-  // >>> LANGKAH KRITIS: GANTI SEMUA NILAI INI DENGAN KUNCI ASLI DARI FIREBASE CONSOLE ANDA <<<
-  apiKey: "AIzaSy_Ini_Adalah_Kunci_Unik_Anda_12345",
-  authDomain: "sequence-game-anda.firebaseapp.com",
-  projectId: "sequence-game-anda",
-  storageBucket: "sequence-game-anda.appspot.com",
-  messagingSenderId: "9876543210",
-  appId: "1:9876543210:web:abcdefg"
+  apiKey: "AIzaSyD_SGGmHMfpShqGirhf_Vr_os_Xv8ddvfQ",
+  authDomain: "sequence-game-ultimate-o-5a7f7.firebaseapp.com",
+  projectId: "sequence-game-ultimate-o-5a7f7",
+  storageBucket: "sequence-game-ultimate-o-5a7f7.firebasestorage.app",
+  messagingSenderId: "906233184320",
+  appId: "1:906233184320:web:22543d29d668a86f641fa5",
+  measurementId: "G-QHL9LRH0RC" 
 }; 
 
 // =========================================================================
@@ -38,9 +39,9 @@ const YOUR_FIREBASE_CONFIG = {
 let app, db, auth;
 let firebaseInitialized = false;
 
-// Cek jika konfigurasi masih placeholder
-if (YOUR_FIREBASE_CONFIG.apiKey.includes('AIzaSy_Ini_Adalah_Kunci_Unik_Anda')) {
-    console.warn("Konfigurasi Firebase masih placeholder. Fitur online dinonaktifkan.");
+// Cek jika konfigurasi masih placeholder atau kosong
+if (!YOUR_FIREBASE_CONFIG.apiKey || YOUR_FIREBASE_CONFIG.apiKey.includes('GANTI_DENGAN_API_KEY_ANDA')) {
+    console.warn("Konfigurasi Firebase masih placeholder atau kosong. Fitur online dinonaktifkan.");
     firebaseInitialized = false;
 } else if (YOUR_FIREBASE_CONFIG) {
   try {
