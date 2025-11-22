@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { RotateCw, Trophy, X, Users, Bot, Volume, VolumeX, MessageSquare, Trash2, AlertTriangle, Clock, ShieldOff, RefreshCw, Loader, User, CheckCircle, WifiOff, Activity, Zap, Brain, Skull, Smartphone, Sparkles, Grid3x3, BookOpen, Crown, AlertOctagon, Info, LogOut, Link as LinkIcon, Shield, Repeat, Layers, AlertOctagon, Info } from 'lucide-react';
+import { 
+  RotateCw, Trophy, X, Users, Bot, Volume, VolumeX, MessageSquare, Trash2, 
+  AlertTriangle, Clock, ShieldOff, RefreshCw, Loader, User, CheckCircle, 
+  WifiOff, Activity, Zap, Brain, Skull, Smartphone, Sparkles, Grid3x3, 
+  BookOpen, Crown, AlertOctagon, Info, LogOut, Link as LinkIcon, 
+  Shield, Repeat, Layers
+} from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, getDoc } from 'firebase/firestore';
@@ -16,7 +22,7 @@ import { getFirestore, doc, setDoc, onSnapshot, updateDoc, arrayUnion, arrayRemo
  * 'firebaseConfig' dan tempelkan di bawah ini, menggantikan 'null'.
  */
 const YOUR_FIREBASE_CONFIG = {
-  // >>> PASTIKAN SEMUA NILAI DI DALAM TANDA KUTIP DENGAN NILAI UNIK ASLI ANDA <<<
+  // >>> LANGKAH KRITIS: GANTI SEMUA NILAI INI DENGAN KUNCI ASLI DARI FIREBASE CONSOLE ANDA <<<
   apiKey: "AIzaSy_Ini_Adalah_Kunci_Unik_Anda_12345",
   authDomain: "sequence-game-anda.firebaseapp.com",
   projectId: "sequence-game-anda",
@@ -32,6 +38,7 @@ const YOUR_FIREBASE_CONFIG = {
 let app, db, auth;
 let firebaseInitialized = false;
 
+// Cek jika konfigurasi masih placeholder
 if (YOUR_FIREBASE_CONFIG.apiKey.includes('AIzaSy_Ini_Adalah_Kunci_Unik_Anda')) {
     console.warn("Konfigurasi Firebase masih placeholder. Fitur online dinonaktifkan.");
     firebaseInitialized = false;
