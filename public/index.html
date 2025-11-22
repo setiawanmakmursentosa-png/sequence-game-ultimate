@@ -14,6 +14,23 @@
     
     <!-- Judul yang muncul di tab browser -->
     <title>Sequence Game Ultimate</title>
+    
+    <!-- === TAMBAHAN: TAILWIND CSS CDN UNTUK MEMASTIKAN STYLING BERFUNGSI PADA DEPLOYMENT === -->
+    <!-- Ini akan memuat Tailwind langsung di browser, melewati masalah build CSS. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Konfigurasi Tailwind untuk menggunakan font Inter secara default
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+          },
+        },
+      }
+    </script>
+    <!-- =================================================================================== -->
   </head>
   <body>
     <!-- Pesan jika JavaScript dinonaktifkan -->
