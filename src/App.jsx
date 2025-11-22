@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, Component } from 'react';
 import { 
   RotateCw, Trophy, X, Users, Bot, Volume, VolumeX, MessageSquare, Trash2, 
   AlertTriangle, Clock, ShieldOff, RefreshCw, Loader, User, CheckCircle, 
@@ -59,7 +59,8 @@ if (YOUR_FIREBASE_CONFIG.apiKey.includes('AIzaSy_Ini_Adalah_Kunci_Unik_Anda')) {
 // =========================================================================
 // ERROR BOUNDARY (PENCEGAH CRASH TOTAL) - Tambahan
 // =========================================================================
-class ErrorBoundary extends React.Component {
+// FIX: Mengimpor Component secara eksplisit dari React dan menggunakannya.
+class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
   static getDerivedStateFromError(error) { return { hasError: true, error: error }; }
   componentDidCatch(error, errorInfo) { console.error("Game Crash:", error, errorInfo); }
@@ -181,7 +182,7 @@ const SequenceGameInternal = () => {
 
   // --- 1. OTENTIKASI DAN INISIALISASI FIREBASE ---
   useEffect(() => {
-    if (!firebaseInitialized) {
+    if (!firebaseInitialized || !auth) {
       setIsLoading(false);
       return;
     }
