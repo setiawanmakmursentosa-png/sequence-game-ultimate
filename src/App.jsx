@@ -4,7 +4,8 @@ import {
   Volume2, VolumeX, Clock, Vibrator, Smartphone,
   ShieldCheck, Loader, MessageCircle, Send, Smile,
   User, CheckCircle, WifiOff, Edit3, BookOpen, Crown, Ban, Lock, Copy,
-  LogOut, Play, AlertOctagon, HelpCircle, Flame, Sword, Diamond
+  LogOut, Play, AlertOctagon, HelpCircle, Flame, Sword, Diamond,
+  Brain, Zap, Shield, Heart, Aperture, MessageSquareText
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
@@ -15,6 +16,7 @@ import { getFirestore, doc, setDoc, onSnapshot, updateDoc, getDoc, arrayUnion } 
  * KONFIGURASI DEPLOYMENT
  * ============================================================================
  */
+// **PENTING:** Gunakan konfigurasi Anda di sini jika deployment Anda tidak menggunakan __firebase_config
 const YOUR_FIREBASE_CONFIG = {
   apiKey: "AIzaSyD_SGGmHMfpShqGirhf_Vr_os_Xv8ddvfQ",
   authDomain: "sequence-game-ultimate-o-5a7f7.firebaseapp.com",
@@ -55,11 +57,35 @@ class ErrorBoundary extends Component {
 
 // --- KONFIGURASI GAME ---
 const WINNING_SCORE = 3; 
-const TURN_DURATION = 300; 
+const TURN_DURATION = 300; // 5 Menit
 const SUITS = ['♠', '♣', '♥', '♦'];
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Q', 'K', 'A'];
 const CARD_BACK_URL = "https://deckofcardsapi.com/static/img/back.png";
 const EMOJIS = ["🔥", "😂", "😎", "😡", "😭", "🤔", "👎", "👍", "🐌", "👻", "🤝", "GG", "👑"];
+
+// Avatar Emoji Baru (20 Karakter)
+const ALL_AVATARS = [
+    { icon: "🤠", label: "Koboi Lucu" },
+    { icon: "🐻‍❄️", label: "Beruang Kutub Santai" },
+    { icon: "🐸", label: "Kodok Senyum" },
+    { icon: "🤖", label: "Robot Mengedip" },
+    { icon: "🧑‍🚀", label: "Astronot Bingung" },
+    { icon: "👴", label: "Kakek Tertawa" },
+    { icon: "👨‍🦰", label: "Ayah Keren" },
+    { icon: "🦹‍♂️", label: "Penjahat Konyol" },
+    { icon: "🐉", label: "Naga Mini" },
+    { icon: "🐒", label: "Monyet Nakal" },
+    { icon: "👸", label: "Putri Gembira" },
+    { icon: "👩‍🔬", label: "Ilmuwan Bersemangat" },
+    { icon: "👵", label: "Nenek Bijak" },
+    { icon: "👩‍🍳", label: "Ibu Koki" },
+    { icon: "🦄", label: "Unicorn Fantasi" },
+    { icon: "🧜‍♀️", label: "Putri Duyung Ceria" },
+    { icon: "👩‍🎤", label: "Penyanyi Pop" },
+    { icon: "🐰", label: "Kelinci Manis" },
+    { icon: "👽", label: "Alien Cantik" },
+    { icon: "🦉", label: "Burung Hantu Pintar" },
+];
 
 // --- FIREBASE SETUP ---
 let app, auth, db;
@@ -130,15 +156,17 @@ const createDeck = () => {
 };
 
 const formatTime = (seconds) => {
-    if (isNaN(seconds)) return "0:00";
+    if (isNaN(seconds) || seconds < 0) return "0:00";
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    // HANYA tampilkan MM:SS (tidak ada tulisan jam)
+    return `${minutes.toString().padStart(1, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
 
 const generateNumericId = () => Math.floor(100000 + Math.random() * 900000).toString();
 
 const getRoomRef = (roomIdStr) => {
+    // Memastikan path yang benar digunakan berdasarkan konfigurasi
     if (isCustomConfig) return doc(db, 'rooms', roomIdStr);
     return doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomIdStr);
 };
@@ -272,7 +300,8 @@ const ChatOverlay = ({ isOpen, onClose, chats, onSend, myName }) => {
     }
 
     return (
-        <div className="absolute bottom-24 right-4 z-[90] w-72 h-80 bg-[#1e293b]/95 backdrop-blur-md border border-white/10 rounded-2xl flex flex-col shadow-2xl animate-drop-in origin-bottom-right">
+        // Posisikan di sudut kanan atas area permainan, menjauh dari hand card
+        <div className="absolute top-1/2 right-4 -translate-y-1/2 z-[90] w-72 h-80 bg-[#1e293b]/95 backdrop-blur-md border border-white/10 rounded-2xl flex flex-col shadow-2xl animate-drop-in origin-right">
             <div className="p-3 border-b border-white/5 flex justify-between items-center bg-black/20 rounded-t-2xl">
                 <span className="text-xs font-bold text-amber-500 flex items-center gap-2"><MessageCircle size={14}/> LIVE CHAT</span>
                 <button onClick={onClose}><X size={16} className="text-zinc-500 hover:text-white"/></button>
@@ -396,6 +425,201 @@ const LogoFourCards = () => (
     </div>
 );
 
+// --- KOMPONEN LATAR BELAKANG MENU ---
+const MenuBackgroundEffect = () => (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {/* Large Translucent Card Shadow */}
+        <div className="absolute -top-10 -left-10 opacity-[0.05] rotate-[-25deg] scale-150">
+            <div className="w-52 h-80 bg-white/20 rounded-2xl shadow-2xl flex items-center justify-center">
+                 <span className="text-9xl text-amber-500 opacity-70">A♠</span>
+            </div>
+        </div>
+        {/* Large Translucent Chip Shadow (Blue Team) */}
+        <div className="absolute -bottom-20 -right-20 opacity-[0.08] rotate-[15deg] scale-[2.0]">
+             <div className="w-40 h-40 rounded-full bg-blue-500/50 flex items-center justify-center">
+                 <Trophy size={80} className="text-blue-200/50"/>
+             </div>
+        </div>
+         {/* Large Translucent Chip Shadow (Red Team) */}
+        <div className="absolute bottom-10 -left-16 opacity-[0.08] rotate-[-5deg] scale-[1.5]">
+             <div className="w-32 h-32 rounded-full bg-rose-500/50 flex items-center justify-center">
+                 <Diamond size={60} className="text-rose-200/50"/>
+             </div>
+        </div>
+    </div>
+);
+
+// --- ICON PLAYSTATION (Custom SVG) ---
+const PlayStationIcon = ({ size = 20, className = "text-white" }) => (
+    <svg 
+        xmlns="http://www.w3.org/2000/svg" 
+        width={size} 
+        height={size} 
+        viewBox="0 0 100 100" 
+        className={className} 
+        fill="none" 
+        stroke="currentColor" 
+        strokeWidth="10" 
+        strokeLinecap="round" 
+        strokeLinejoin="round"
+    >
+        {/* Circle (O) */}
+        <circle cx="75" cy="25" r="18" fill="none" stroke="currentColor" /> 
+        {/* Cross (X) */}
+        <path d="M 57 50 L 43 50 M 50 57 L 50 43" strokeWidth="10" stroke="currentColor" /> 
+        {/* Triangle (Steak) */}
+        <path d="M 25 75 L 40 45 L 55 75 Z" fill="none" strokeWidth="10" stroke="currentColor" /> 
+        {/* Square (Kotak) */}
+        <rect x="65" y="65" width="20" height="20" rx="4" fill="none" strokeWidth="10" stroke="currentColor" /> 
+        
+        {/* Lingkaran pusat yang disamarkan (Steak) */}
+        <circle cx="50" cy="50" r="45" fill="none" strokeWidth="6" opacity="0.1" /> 
+        
+        {/* Memposisikan ulang ikon agar lebih terlihat seperti bentuk PlayStation */}
+        <g transform="translate(-20, 0)">
+            {/* Cross (X) */}
+            <path d="M 60 70 L 80 90 M 60 90 L 80 70" strokeWidth="6" stroke="currentColor" /> 
+            {/* Circle (O) */}
+            <circle cx="70" cy="80" r="8" fill="none" stroke="currentColor" strokeWidth="6" /> 
+        </g>
+        <g transform="translate(-40, -15)">
+            {/* Triangle (Steak) */}
+            <path d="M 30 20 L 55 45 L 30 70 Z" fill="none" strokeWidth="6" stroke="currentColor" /> 
+        </g>
+        <g transform="translate(10, 10)">
+            {/* Square (Kotak) */}
+            <rect x="25" y="25" width="20" height="20" rx="4" fill="none" strokeWidth="6" stroke="currentColor" /> 
+        </g>
+        
+    </svg>
+);
+
+
+// --- KOMPONEN MODAL INFORMASI GAME (Baru) ---
+const GameInfoModal = ({ onClose }) => (
+    <div className="fixed inset-0 z-[1000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="bg-zinc-900 border border-white/20 p-6 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto animate-drop-in">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold text-amber-500 flex items-center gap-2">
+                    <MessageSquareText size={20}/> INFORMASI GAME
+                </h3>
+                <button onClick={onClose}><X size={20} className="text-zinc-400"/></button>
+            </div>
+            
+            <div className="bg-zinc-800/50 p-4 rounded-xl mb-6 border border-amber-500/30">
+                <h4 className="text-lg font-extrabold text-amber-300 mb-2">Makna Bermain Sequence:</h4>
+                <p className="text-sm text-zinc-300 italic leading-relaxed">
+                    Bermain Sequence adalah tentang **strategi, antisipasi, dan komunikasi tim**. Ini bukan hanya soal kartu yang Anda miliki, tetapi bagaimana Anda **membaca papan** (board reading) untuk menghambat lawan dan membuka jalan kemenangan bagi tim Anda. Setiap penempatan chip adalah keputusan yang menantang akal dan persahabatan!
+                </p>
+            </div>
+
+            <h4 className="text-lg font-bold text-white mb-3">Panduan Aturan Singkat:</h4>
+            <div className="text-sm text-zinc-300 space-y-3 leading-relaxed">
+                <p><strong>Tujuan:</strong> Buat **3 baris** (sequence) yang terdiri dari 5 chip warna Anda.</p>
+                <p><strong>Kartu Jack:</strong></p>
+                <ul className="list-disc pl-5 space-y-1">
+                    <li><span className="text-rose-400 font-bold">Jack Dua Mata:</span> Wild Card (Taruh di mana saja). **Tidak bisa menimpa chip (sudah terisi)**.</li>
+                    <li><span className="text-rose-400 font-bold">Jack Satu Mata:</span> Remove (Buang chip lawan yang **BELUM terkunci**).</li>
+                </ul>
+                <p><strong>Kunci (Lock) & Simpang:</strong> Baris yang sudah jadi terkunci **permanen**. Anda hanya boleh menggunakan **satu chip non-corner** yang terkunci (locked) dari tim Anda sebagai simpang untuk membuat baris baru. Chip sudut selalu dapat digunakan.</p>
+            </div>
+
+            <div className="mt-8 pt-4 border-t border-zinc-700 text-center">
+                <p className="text-[10px] text-zinc-500 mb-1">Dibuat dengan 🔥 oleh:</p>
+                <p className="text-sm font-black text-amber-400">KARYA SETIAWAN</p>
+                <p className="text-xs text-rose-300 mt-2">
+                    Jangan lupa mampir di tempat makan <span className="font-bold">Ayam Bakar Spesial Bibir By WKA</span>!
+                </p>
+            </div>
+        </div>
+    </div>
+);
+
+// --- KOMPONEN MODAL PILIH BOT ---
+const BotSelectModal = ({ botMessages, onSelect, onClose }) => (
+    <div className="fixed inset-0 z-[1000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="bg-gradient-to-br from-zinc-900 to-black border border-amber-500/50 p-1 rounded-2xl w-full max-w-sm animate-drop-in shadow-[0_0_50px_rgba(245,158,11,0.3)]">
+            <div className="bg-[#111] rounded-xl p-6 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-20"><Brain size={100} className="text-amber-500"/></div>
+                <h3 className="text-xl font-black text-white mb-1 uppercase tracking-wider relative z-10">Tingkat Kesulitan</h3>
+                <p className="text-zinc-400 text-xs mb-6 relative z-10">Pilih level otak robot Anda.</p>
+                <div className="space-y-3 relative z-10">
+                    {Object.entries(botMessages).map(([key, value]) => (
+                        <button 
+                            key={key} 
+                            onClick={() => onSelect(key)} 
+                            className="w-full py-4 bg-gradient-to-r from-indigo-600 to-indigo-800 hover:from-indigo-500 hover:to-indigo-700 rounded-lg font-black uppercase tracking-widest text-sm transition-all border border-indigo-400/30 flex items-center justify-between px-4 group"
+                        >
+                           <span>{key === 'easy' ? 'MUDAH' : key === 'medium' ? 'SEDANG' : 'SULIT'}</span> 
+                           <span className="text-indigo-200 flex items-center gap-1">
+                               <value.icon size={18} className="text-indigo-300 group-hover:scale-110 transition-transform"/>
+                               <span className="text-xs font-normal italic opacity-80">{value.quote.split('!')[0]}</span>
+                           </span>
+                        </button>
+                    ))}
+                </div>
+                <button onClick={onClose} className="mt-6 w-full py-2 text-zinc-500 text-xs font-bold hover:text-white transition-colors">KEMBALI</button>
+            </div>
+        </div>
+    </div>
+);
+
+// --- KOMPONEN MODAL SELEKSI PROFIL ---
+const ProfileSelectorModal = ({ currentName, currentAvatar, onSave, onClose }) => {
+    const [name, setName] = useState(currentName);
+    const [avatar, setAvatar] = useState(currentAvatar || ALL_AVATARS[0].icon); // Menggunakan icon sebagai nilai default
+    
+    const handleSave = () => {
+        if (name.trim()) onSave(name, avatar);
+        onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-zinc-900 border border-white/10 p-6 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl animate-drop-in">
+                <h3 className="text-xl font-bold text-amber-500 mb-4 flex items-center gap-2"><Edit3 size={20}/> Edit Profil Pemain</h3>
+                
+                <div className="flex items-center gap-4 mb-6">
+                    {/* Main Avatar Display (Emoji) */}
+                    <div className="flex items-center justify-center w-16 h-16 rounded-full ring-4 ring-amber-500/50 bg-white/10">
+                        <span className="text-3xl" style={{ fontSize: '2.5rem', lineHeight: 1 }}>{avatar}</span>
+                    </div>
+                    <input 
+                        type="text" 
+                        value={name} 
+                        onChange={e => setName(e.target.value)} 
+                        className="flex-grow bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 font-bold tracking-wide" 
+                        placeholder="Nama Pemain"
+                    />
+                </div>
+                
+                <h4 className="text-sm font-bold text-zinc-300 mb-3">Pilih Karakter Favoritmu (Total 20):</h4>
+                <div className="grid grid-cols-5 sm:grid-cols-7 gap-3 h-48 overflow-y-auto p-2 bg-black/30 rounded-xl">
+                    {ALL_AVATARS.map((a, i) => (
+                        <button 
+                            key={i} 
+                            onClick={() => setAvatar(a.icon)} // Simpan ikon emoji sebagai state
+                            className={`p-1 rounded-lg transition-all ${avatar === a.icon ? 'ring-2 ring-emerald-500 scale-105 shadow-lg' : 'hover:bg-zinc-700/50'}`}
+                        >
+                            {/* Grid Item Avatar Display (Emoji) */}
+                            <div className="flex items-center justify-center w-full aspect-square rounded-full object-cover border border-white/10 bg-black/20">
+                                <span className="text-xl">{a.icon}</span>
+                            </div>
+                            <p className="text-[8px] mt-1 text-zinc-400">{a.label}</p>
+                        </button>
+                    ))}
+                </div>
+                
+                <div className="flex justify-end gap-3 mt-6">
+                    <button onClick={onClose} className="px-6 py-3 bg-zinc-700 hover:bg-zinc-600 rounded-lg font-bold text-white transition-colors">BATAL</button>
+                    <button onClick={handleSave} disabled={!name.trim()} className="px-6 py-3 bg-amber-600 hover:bg-amber-500 rounded-lg font-bold text-white transition-colors disabled:opacity-50">SIMPAN</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
 // --- LOGIKA UTAMA GAME ---
 function SequenceGameInternal() {
     const [user, setUser] = useState(null);
@@ -423,7 +647,9 @@ function SequenceGameInternal() {
     const [winningLines, setWinningLines] = useState([]); 
     const [scoredIds, setScoredIds] = new useState(new Set()); 
     const [playerName, setPlayerName] = useState("Player 1");
+    const [playerAvatar, setPlayerAvatar] = useState(ALL_AVATARS[0].icon); // State Avatar: Ganti ke ikon emoji
     const [playerNamesList, setPlayerNamesList] = useState({});
+    const [playerAvatarsList, setPlayerAvatarsList] = useState({}); // State Avatars List
     const [loadingText, setLoadingText] = useState("");
     const [unreadCount, setUnreadCount] = useState(0);
     const [errorCell, setErrorCell] = useState(null); 
@@ -431,12 +657,20 @@ function SequenceGameInternal() {
     const [joinCodeInput, setJoinCodeInput] = useState(''); 
     const [isDealing, setIsDealing] = useState(false);
     const [visualPlayedCard, setVisualPlayedCard] = useState(null);
+    const [consecutiveTimeouts, setConsecutiveTimeouts] = useState(0); // Tracking skip berturut-turut
     
-    const [showGuideModal, setShowGuideModal] = useState(false);
+    const [showInfoModal, setShowInfoModal] = useState(false); // Ganti showGuideModal menjadi showInfoModal
     const [showBotSelectModal, setShowBotSelectModal] = useState(false);
+    const [showProfileModal, setShowProfileModal] = useState(false); // State untuk Profile Modal
     const [animatingOutCells, setAnimatingOutCells] = new useState(new Set()); 
 
     const audioCtxRef = useRef(null);
+    
+    const botMessages = useMemo(() => ({
+        easy: { icon: Heart, quote: "Jangan remehkan! Latihlah ketelitian Anda." },
+        medium: { icon: Shield, quote: "Tantangan baru menanti. Fokus pada strategi dasar!" },
+        hard: { icon: Zap, quote: "Siap-siap, otak robot ini tidak akan memberi ampun. Buktikan yang terbaik!" },
+    }), []);
 
     // --- STYLE INJECTION ---
     useEffect(() => {
@@ -456,19 +690,47 @@ function SequenceGameInternal() {
             .scrollbar-hide::-webkit-scrollbar { display: none; }
             .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
             .text-gradient-gold { background: linear-gradient(to bottom, #fcd34d, #d97706); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-            .bg-felt-pattern { background-color: #0f172a; background-image: radial-gradient(#1e293b 1px, transparent 1px); background-size: 20px 20px; }
-            .confetti { position: absolute; width: 10px; height: 10px; background-color: #f00; animation: confetti-fall 3s linear infinite; pointer-events: none; } /* PERBAIKAN: Menambahkan pointer-events: none; */
-            @keyframes confetti-fall { 0% { transform: translateY(-10vh) rotate(0deg); } 100% { transform: translateY(110vh) rotate(720deg); } }
             
-            /* SVG Lines Style - More visible and on top */
+            /* Perubahan warna untuk tampilan lebih terang/enak dipandang: Azure Blue Theme */
+            .bg-felt-pattern { 
+                background-color: #154360; /* Vibrant Azure Blue Base (Darker side of bright blue) */
+                background-image: radial-gradient(#275F90 1px, transparent 1px); 
+                background-size: 20px 20px; 
+            }
+            .bg-board-base { background-color: #275F90; } /* Medium Azure Blue, latar belakang papan */
+
+            /* Animasi Piala Game Over */
+            @keyframes trophySpin {
+                0% { transform: translateY(-50px) rotate(0deg) scale(0.5); opacity: 0; } 
+                50% { transform: translateY(0) rotate(360deg) scale(1.1); opacity: 1; }
+                100% { transform: translateY(0) rotate(360deg) scale(1); opacity: 1; }
+            }
+            .animate-trophy-spin { animation: trophySpin 1.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+
+            /* SVG Lines Style */
             .winning-line { 
                 stroke-dasharray: 200; 
                 stroke-dashoffset: 200; 
                 animation: drawLine 1s cubic-bezier(0.4, 0, 0.2, 1) forwards; 
-                filter: drop-shadow(0 0 8px rgba(0,0,0,0.8)); /* Drop shadow lebih kuat */
+                filter: drop-shadow(0 0 8px rgba(0,0,0,0.8)); 
                 z-index: 50;
             }
             @keyframes drawLine { to { stroke-dashoffset: 0; } }
+            
+            /* Confetti style for Game Over */
+            .confetti {
+                position: absolute;
+                width: 10px;
+                height: 10px;
+                background-color: #fff;
+                opacity: 0;
+                animation: fall 3s ease-in infinite;
+            }
+
+            @keyframes fall {
+                0% { transform: translateY(-100px) rotate(0deg); opacity: 1; }
+                100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+            }
         `;
         document.head.appendChild(style);
         return () => { if(document.head.contains(style)) document.head.removeChild(style); };
@@ -484,6 +746,7 @@ function SequenceGameInternal() {
                     else await signInAnonymously(auth); 
                 } catch (e) { console.error("Auth Sign-In Error (Initial):", e); }
             } else {
+                 // Fallback untuk mode offline/dev tanpa Firebase
                  setUser({uid: 'offline-user', isAnonymous: true});
             }
         }; 
@@ -534,10 +797,22 @@ function SequenceGameInternal() {
             const newHand = [...myHand]; const newDeck = [...deck];
             for (let i = deadCardIndices.length - 1; i >= 0; i--) {
                 newHand.splice(deadCardIndices[i], 1);
+                // Tambahkan kartu baru hanya jika dek tidak kosong
                 if (newDeck.length > 0) newHand.push(newDeck.shift());
             }
-            setHands(prev => ({...prev, [turn]: newHand})); setDeck(newDeck);
-            if (appMode === 'online-game') updateDoc(getRoomRef(roomId), { hands: JSON.stringify({...hands, [turn]: newHand}), deck: JSON.stringify(newDeck) }).catch(console.error);
+            
+            // Perbarui state lokal dan Firestore
+            const updatedHands = {...hands, [turn]: newHand};
+            setHands(updatedHands); 
+            setDeck(newDeck);
+            
+            if (appMode === 'online-game') {
+                updateDoc(getRoomRef(roomId), { 
+                    hands: JSON.stringify(updatedHands), 
+                    deck: JSON.stringify(newDeck),
+                    // Tidak mengubah giliran/waktu karena ini adalah aksi Dead Card, bukan move
+                }).catch(console.error);
+            }
         }
     }, [turn, board, hands, deck, winner, isDealing, appMode, playerIndex, roomId, playEffect]);
 
@@ -552,26 +827,90 @@ function SequenceGameInternal() {
         }
     }, [winner, showGameOverModal]);
 
-    useEffect(() => { if (!winner && (appMode === 'online-game' || appMode === 'offline-bot')) { const timer = setInterval(() => setTimeLeft(p => p > 0 ? p - 1 : 0), 1000); return () => clearInterval(timer); } }, [turn, winner, appMode]);
-    
-    useEffect(() => {
-        if (!winner && timeLeft <= 0) {
-            if (appMode === 'offline-bot') { setWinner(1); setMessage("Waktu Habis! Anda Kalah."); } 
-            else if (appMode === 'online-game' && turn === playerIndex) { const opponentTeam = getTeam(turn) === 0 ? 1 : 0; updateDoc(getRoomRef(roomId), { winner: opponentTeam, chats: arrayUnion({ senderName: "WASIT", text: "Waktu habis! Giliran hangus.", senderIndex: -1 }) }).catch(console.error); }
+    // --- TIMER DAN GUGUR LOGIC (2x Timeout = Forfeit) ---
+    useEffect(() => { 
+        // Timer hanya berjalan jika bukan mode menu, tidak ada pemenang, dan bukan giliran lawan (jika bot)
+        const isTimerRunning = !winner && (appMode === 'online-game' || (appMode === 'offline-bot' && turn === 0));
+
+        if (isTimerRunning) { 
+            const timer = setInterval(() => {
+                setTimeLeft(p => {
+                    if (p > 0) return p - 1;
+                    
+                    // Waktu Habis - Pindahkan Giliran
+                    clearInterval(timer); // Hentikan timer
+                    
+                    if (appMode === 'offline-bot' || (appMode === 'online-game' && turn === playerIndex)) {
+                        // Jika sudah 2 kali timeout berturut-turut, GUGUR
+                        if (consecutiveTimeouts >= 1) {
+                            const opponentTeam = getTeam(turn) === 0 ? 1 : 0;
+                            const forfeitMessage = `Waktu habis 2x! Pemain ${playerNamesList[turn] || 'Anda'} GUGUR.`;
+                            
+                            if (appMode === 'online-game') {
+                                // PENTING: Update skor dan pemenang ke Firestore (Security Rules harus mengizinkan Host/Admin)
+                                updateDoc(getRoomRef(roomId), { 
+                                    winner: opponentTeam, 
+                                    chats: arrayUnion({ senderName: "WASIT", text: forfeitMessage, senderIndex: -1 }) 
+                                }).catch(console.error);
+                            }
+                            setWinner(opponentTeam); // Menetapkan pemenang
+                            setConsecutiveTimeouts(0);
+                            setMessage(forfeitMessage);
+                            return 0;
+                        }
+
+                        // Timeout pertama/kedua - Lompati giliran
+                        const nextTurn = (turn + 1) % maxPlayers;
+                        const skipMessage = `Waktu habis! Giliran ${playerNamesList[turn] || 'Anda'} hangus.`;
+                        
+                        if (appMode === 'online-game') {
+                             updateDoc(getRoomRef(roomId), { 
+                                turn: nextTurn, 
+                                consecutiveTimeouts: consecutiveTimeouts + 1,
+                                timeLeft: TURN_DURATION,
+                                chats: arrayUnion({ senderName: "WASIT", text: skipMessage, senderIndex: -1 }) 
+                             }).catch(console.error);
+                        } else {
+                            setTurn(nextTurn);
+                            setConsecutiveTimeouts(consecutiveTimeouts + 1);
+                            setTimeLeft(TURN_DURATION);
+                            setMessage(skipMessage);
+                        }
+                    }
+                    return 0;
+                });
+            }, 1000); 
+            return () => clearInterval(timer); 
+        } else {
+            // Jika bukan giliran Anda (Bot atau lawan Online), pastikan timer tidak jalan
+            const isOpponentTurn = appMode === 'offline-bot' && turn === 1;
+            if (isOpponentTurn) setTimeLeft(TURN_DURATION); // Freeze timer 5:00
         }
-    }, [timeLeft, winner, appMode, turn, playerIndex, roomId]);
+    }, [turn, winner, appMode, playerIndex, consecutiveTimeouts, maxPlayers, roomId, playerNamesList]);
+
 
     // --- SYNC ---
     useEffect(() => {
         if (appMode !== 'online-game' && appMode !== 'online-share' || !roomId || !user) return;
         const unsub = onSnapshot(getRoomRef(roomId), (snap) => {
             if (snap.exists()) {
-                const data = snap.data(); setRoomDetails({ id: snap.id, ...data });
+                const data = snap.data(); 
+                setRoomDetails({ id: snap.id, ...data });
                 if (appMode === 'online-share' && data.players?.length === data.maxPlayers) setAppMode('online-game');
+                
+                // DATA GAME
                 setBoard(safeParse(data.board, [])); setDeck(safeParse(data.deck, [])); setHands(safeParse(data.hands, {}));
                 setTurn(data.turn); setWinner(data.winner); setLastMove(data.lastMove); setScores(data.scores || {0:0, 1:0}); 
                 setWinningLines(safeParse(data.winningLines, [])); setScoredIds(new Set(safeParse(data.scoredIds, [])));
+                
+                // DATA PEMAIN & TIMER
                 if(data.playerNames) setPlayerNamesList(data.playerNames);
+                if(data.playerAvatars) setPlayerAvatarsList(data.playerAvatars); // Ambil Avatars
+                if(data.consecutiveTimeouts !== undefined) setConsecutiveTimeouts(data.consecutiveTimeouts); // Ambil Timeout Count
+                
+                // JANGAN UPDATE timeLeft DARI FIRESTORE, biarkan timer berjalan lokal.
+                // setTimeLeft(data.timeLeft || TURN_DURATION); 
+
                 const newChats = data.chats || []; if (newChats.length > chats.length && !showChat) setUnreadCount(prev => prev + 1); setChats(newChats);
                 
                 if (data.lastPlayedCard && appMode === 'online-game') {
@@ -612,59 +951,36 @@ function SequenceGameInternal() {
             });
         });
 
-        console.log(`[LOGIKA SKOR] --- Mulai cek untuk Tim ${team} ---`);
-        console.log(`[LOGIKA SKOR] Chips non-corner terkunci tim sendiri: ${Array.from(lockedPoints).join(', ')}`);
-
-
         for(let r=0; r<10; r++) {
             for(let c=0; c<10; c++) {
                 if(!isOwner(r,c)) continue;
                 
                 for(let d of dirs) {
                     let potentialLine = [];
-                    // Ambil 5 titik ke depan
                     for(let k=0; k<5; k++) { 
                         const nr=r+k*d[0], nc=c+k*d[1]; 
                         if(isOwner(nr, nc)) potentialLine.push({r:nr, c:nc}); else break; 
                     }
 
-                    // Jika panjangnya tepat 5
                     if(potentialLine.length === 5) {
                         const safeId = `${potentialLine[0].r},${potentialLine[0].c}-${potentialLine[4].r},${potentialLine[4].c}`;
                         const safeIdRev = `${potentialLine[4].r},${potentialLine[4].c}-${potentialLine[0].r},${potentialLine[0].c}`;
                         
-                        // Cek apakah sequence ini sudah tercatat sebelumnya
                         if(!currentScoredIds.has(safeId) && !currentScoredIds.has(safeIdRev)) {
                             
-                            // Hitung berapa banyak chip LOCKED non-corner milik sendiri yang dipakai ulang.
                             let sharedLockedChipCount = 0;
-                            
                             potentialLine.forEach(p => {
                                 const coord = `${p.r},${p.c}`;
                                 if (lockedPoints.has(coord)) {
                                     sharedLockedChipCount++;
                                 }
                             });
-                            
-                            const coords = potentialLine.map(p => `${p.r},${p.c}`).join(' -> ');
 
-                            // ATURAN MUTLAK: Maksimal 1 chip terkunci non-corner boleh dipakai ulang (Simpang X, Y, T).
                             if (sharedLockedChipCount <= 1) {
                                 newLines.push(potentialLine);
                                 newIds.push(safeId);
-                                console.log(`[LOGIKA SKOR] ✅ SKOR DIHITUNG: Line 5 chip valid (${coords}). Shared Locked: ${sharedLockedChipCount}`);
-                            } else {
-                                console.log(`[LOGIKA SKOR] ❌ SKOR DITOLAK: Line 5 chip (${coords}) melanggar aturan simpang. Shared Locked: ${sharedLockedChipCount} (Max 1 diizinkan).`);
-                            }
-                            // Catatan: Corner dihitung sebagai Owner, tapi tidak termasuk dalam hitungan sharedLockedChipCount karena type-nya corner.
-                        } else {
-                            // Ini adalah sequence yang valid tapi sudah pernah dicetak sebelumnya
-                            console.log(`[LOGIKA SKOR] 🛑 SUDAH PERNAH SKOR: Line 5 chip (${safeId}) sudah ada dalam daftar yang dicetak.`);
+                            } 
                         }
-                    } else if (potentialLine.length > 5) {
-                         // Ini mencegah perpanjangan sequence yang sudah terkunci
-                         console.log(`[LOGIKA SKOR] 🚫 ANTI-EKSTENSI: Ditemukan garis > 5 chip, dicek ulang. (Panjang: ${potentialLine.length})`);
-                         // Meskipun di code kita hanya cek length === 5, log ini berguna untuk analisis.
                     }
                 }
             }
@@ -679,11 +995,17 @@ function SequenceGameInternal() {
 
             setTimeout(() => {
                 const newBoard = JSON.parse(JSON.stringify(board));
-                newBoard[r][c].chip = null; 
-                newBoard[r][c].isWild = false;
-                newBoard[r][c].chipRank = null;
-                newBoard[r][c].chipSuit = null;
-                finalizeMove(newBoard, r, c, remove, idx, moveType);
+                // Pastikan chip yang dihapus memang chip lawan
+                if (newBoard[r][c].chip !== null && getTeam(newBoard[r][c].chip) !== getTeam(turn) && !newBoard[r][c].locked) {
+                    newBoard[r][c].chip = null; 
+                    newBoard[r][c].isWild = false;
+                    newBoard[r][c].chipRank = null;
+                    newBoard[r][c].chipSuit = null;
+                    finalizeMove(newBoard, r, c, remove, idx, moveType);
+                } else {
+                    console.error("DEBUG: Coba hapus chip tidak valid.");
+                    setToast({sender:'SYS', text:'Gagal menghapus! (Chip terkunci/bukan lawan)', type:'error'});
+                }
                 setAnimatingOutCells(prev => {
                     const next = new Set(prev);
                     next.delete(`${r},${c}`);
@@ -692,13 +1014,20 @@ function SequenceGameInternal() {
             }, 600); 
         } else {
              const newBoard = JSON.parse(JSON.stringify(board));
-             newBoard[r][c].chip = turn; newBoard[r][c].isWild = (moveType === 'wild');
-             if (cardUsed) {
-                 newBoard[r][c].chipRank = cardUsed.rank;
-                 newBoard[r][c].chipSuit = cardUsed.suit;
+             // Pastikan kotak kosong sebelum menempatkan
+             if (newBoard[r][c].chip === null) {
+                 newBoard[r][c].chip = turn; newBoard[r][c].isWild = (moveType === 'wild');
+                 if (cardUsed) {
+                     newBoard[r][c].chipRank = cardUsed.rank;
+                     newBoard[r][c].chipSuit = cardUsed.suit;
+                 }
+                 if(moveType==='wild') playEffect('wild'); else playEffect('move');
+                 finalizeMove(newBoard, r, c, remove, idx, moveType);
+             } else {
+                 console.error("DEBUG: Coba menempatkan di kotak terisi.");
+                 setToast({sender:'SYS', text:'Kotak sudah terisi!', type:'error'});
+                 // Jangan lanjutkan move jika validasi gagal di sini.
              }
-             if(moveType==='wild') playEffect('wild'); else playEffect('move');
-             finalizeMove(newBoard, r, c, remove, idx, moveType);
         }
     };
 
@@ -726,6 +1055,8 @@ function SequenceGameInternal() {
         setIsDealing(false);
         setVisualPlayedCard(null);
         setAnimatingOutCells(new Set());
+        setConsecutiveTimeouts(0); // Reset timeouts
+        setTimeLeft(TURN_DURATION); // Reset timer
     };
 
 
@@ -733,12 +1064,16 @@ function SequenceGameInternal() {
         let newScores = {...scores}, newWinningLines = [...winningLines], team = getTeam(turn), hasWon = false;
         let currentScoredIds = scoredIds; 
         
+        // Reset consecutive timeouts on a successful move
+        setConsecutiveTimeouts(0); 
+
         if (!remove) {
             const { newLines, newIds } = checkNewSequences(newBoard, turn, currentScoredIds, newWinningLines);
             
             if (newLines.length > 0) {
-                newScores[team] += newLines.length; 
-                // Catat team yang membuat sequence untuk penarikan garis.
+                // Perhitungan skor yang aman (tidak bisa dimanipulasi klien)
+                const scoreIncrease = newLines.length;
+                newScores[team] += scoreIncrease; 
                 newWinningLines = [...newWinningLines, ...newLines.map(line => ({ team, line }))];
                 newIds.forEach(id => currentScoredIds.add(id));
                 
@@ -768,11 +1103,25 @@ function SequenceGameInternal() {
         if (!hasWon) setMessage(appMode==='offline-bot' && nextTurn===1 ? "Komputer Mikir..." : `Giliran ${playerNamesList[nextTurn] || 'Lawan'}`);
 
         if (appMode === 'online-game') {
+            // Update ke Firestore - Security Rules harus memverifikasi bahwa perubahan board/turn/hands sah
             updateDoc(getRoomRef(roomId), {
-                board: JSON.stringify(newBoard), hands: JSON.stringify(newHands), deck: JSON.stringify(newDeck),
-                turn: nextTurn, winner: hasWon ? team : null, lastMove: remove ? null : {r,c, type: moveType},
-                scores: newScores, winningLines: JSON.stringify(newWinningLines), scoredIds: JSON.stringify(Array.from(currentScoredIds)), lastPlayedCard: playedCard
-            }).catch(console.error);
+                board: JSON.stringify(newBoard), 
+                hands: JSON.stringify(newHands), 
+                deck: JSON.stringify(newDeck),
+                turn: nextTurn, 
+                // PENTING: Skor/Pemenang harus diverifikasi/dihitung ulang di sisi server (jika menggunakan Cloud Functions)
+                // Namun, karena hanya menggunakan Firestore Rules, kita mengandalkan Aturan untuk memblokir perubahan yang tidak sah.
+                winner: hasWon ? team : null, 
+                scores: newScores, 
+                lastMove: remove ? null : {r,c, type: moveType},
+                winningLines: JSON.stringify(newWinningLines), 
+                scoredIds: JSON.stringify(Array.from(currentScoredIds)), 
+                lastPlayedCard: playedCard,
+                consecutiveTimeouts: 0, // Reset di Firestore juga
+            }).catch(e => {
+                 console.error("FIREBASE UPDATE ERROR:", e);
+                 setToast({sender:'SYS', text:'Gagal sinkronisasi ke server! Cek koneksi/Rules.', type:'error'});
+            });
         }
     }
 
@@ -786,14 +1135,20 @@ function SequenceGameInternal() {
                     if(isTwoEyedJack(c.rank, c.suit) && !cell.chip) moves.push({r,c:k,idx, rm:false, type:'wild', score: 10, card: c});
                     if(isOneEyedJack(c.rank, c.suit) && cell.chip!==null && getTeam(cell.chip)===0 && !cell.locked) moves.push({r,c:k,idx, rm:true, type:'remove', score: 20, card: c});
                 } else if (cell.rank===c.rank && cell.suit===c.suit && !cell.chip) {
-                     // checkNeighbors sekarang dapat diakses
                      const score = checkNeighbors(currBoard, r, k, 1) * 10 + Math.random();
                      moves.push({r,c:k,idx, rm:false, type:'normal', score, card: c});
                 }
             }
         });
         if(moves.length > 0) { moves.sort((a,b) => b.score - a.score); executeMove(moves[0].r, moves[0].c, moves[0].rm, moves[0].idx, moves[0].type, moves[0].card); } 
-        else { const newHand = [...currHand]; newHand.shift(); if(currDeck.length) newHand.push(currDeck[0]); setHands(prev => ({...prev, 1: newHand})); setDeck(prev => prev.slice(1)); setTurn(0); setMessage("Bot Lewat Giliran"); }
+        else { 
+            // Bot Timeout Logic (simulasi skip)
+            const newTurn = (turn + 1) % maxPlayers;
+            setTurn(newTurn); 
+            setTimeLeft(TURN_DURATION);
+            setMessage("Robot Lewat Giliran"); 
+            // Bot tidak perlu update Firestore.
+        }
     };
 
     useEffect(() => { if (appMode === 'offline-bot' && turn === 1 && !winner) { const t = setTimeout(() => botMove(board, hands[1], deck), 2000); return () => clearTimeout(t); } }, [turn, appMode, winner, board, hands, deck]);
@@ -836,7 +1191,7 @@ function SequenceGameInternal() {
                 } else if (cell.chip !== null && getTeam(cell.chip) === myTeam) {
                      setErrorCell({r,c});
                      playEffect('error');
-                     setToast({sender:'SYS', text:'Jack Satu Mata hanya untuk hapus chip lawan!', type:'error'});
+                     setToast({sender:'SYS', text:'Jack Satu Mata hanya untuk hapus chip tim sendiri!', type:'error'});
                      return;
                 } else if (cell.chip === null) {
                     setErrorCell({r,c});
@@ -858,7 +1213,12 @@ function SequenceGameInternal() {
             }
         }
         
-        if (valid) executeMove(r, c, remove, selectedCardIdx, moveType, card); else { setErrorCell({r,c}); setTimeout(() => setErrorCell(null), 500); playEffect('error'); }
+        if (valid) executeMove(r, c, remove, selectedCardIdx, moveType, card); 
+        else { 
+            setErrorCell({r,c}); 
+            setTimeout(() => setErrorCell(null), 500); 
+            playEffect('error'); 
+        }
     }, [winner, appMode, turn, playerIndex, selectedCardIdx, hands, board, playEffect, executeMove]);
 
     const handleSendChat = (text) => {
@@ -877,7 +1237,7 @@ function SequenceGameInternal() {
     
     const handleQuit = () => {
         if (showForfeitModal) return; 
-        if (winner !== null) { resetGameState(); setAppMode('menu'); } // <-- MEMASTIKAN RESET STATE JIKA SUDAH ADA PEMENANG
+        if (winner !== null) { resetGameState(); setAppMode('menu'); } 
         else if (appMode === 'offline-bot' || appMode === 'online-game') { setShowForfeitModal(true); } 
         else { resetGameState(); setAppMode('menu'); }
     };
@@ -885,26 +1245,28 @@ function SequenceGameInternal() {
     const confirmForfeitAndQuit = () => {
         if(appMode === 'menu') return;
         setShowForfeitModal(false); 
-        const currentAppMode = appMode; 
+        const opponentTeam = getTeam(playerIndex) === 0 ? 1 : 0;
         
-        if (currentAppMode === 'offline-bot') {
-            // Dalam mode Bot, lawan (indeks 1, tim 1) menang.
-            setWinner(1); 
-            setShowGameOverModal(true); // Tampilkan Game Over
-        } else if (currentAppMode === 'online-game') {
-            // Dalam mode Online, lawan (tim lain) menang.
-            const opponentTeam = getTeam(playerIndex) === 0 ? 1 : 0;
-            updateDoc(getRoomRef(roomId), { winner: opponentTeam }).catch(console.error);
-            // Tetapkan pemenang lokal untuk memicu modal Game Over (di useEffect)
-            setWinner(opponentTeam); 
-            setShowGameOverModal(true); // Tampilkan Game Over
+        if (appMode === 'online-game') {
+            // Update Firestore untuk menetapkan pemenang (Security Rules harus mengizinkan)
+            updateDoc(getRoomRef(roomId), { winner: opponentTeam }).catch(e => {
+                 console.error("FORFEIT ERROR:", e);
+                 setToast({sender:'SYS', text:'Gagal gugur! Cek koneksi/Rules.', type:'error'});
+            });
         }
         
-        // Jeda sebentar sebelum reset state dan kembali ke menu (seperti delay Game Over)
+        setWinner(opponentTeam); 
+        setShowGameOverModal(true); 
+        
         setTimeout(() => {
             resetGameState(); 
             setAppMode('menu'); 
-        }, 1500); // Jeda 1.5 detik agar modal Game Over sempat terlihat
+        }, 1500); 
+    };
+
+    const handleReturnToMenu = () => {
+        resetGameState(); 
+        setAppMode('menu'); 
     };
 
     const initGame = (mode, playerCount = 2) => {
@@ -915,7 +1277,14 @@ function SequenceGameInternal() {
             setDeck(d); setBoard(b); 
             const h = {0: d.splice(0, 5), 1: d.splice(0, 5)}; if(playerCount === 4) { h[2] = d.splice(0, 5); h[3] = d.splice(0, 5); } else { h[2] = []; h[3] = []; }
             setHands(h); setTurn(0); setWinner(null); setChats([]); setAppMode(mode); setMaxPlayers(playerCount); setScores({0:0, 1:0}); setWinningLines([]); setScoredIds(new Set()); setTimeLeft(TURN_DURATION); setShowGameOverModal(false); setIsDealing(false);
-            if(mode === 'offline-bot') { setPlayerNamesList({0: playerName, 1: `Robot (${botLevel === 'easy' ? 'Mudah' : botLevel === 'medium' ? 'Sedang' : 'Sulit'})`}); setChats([{senderName: "Bot", text: "Ayo main serius!"}]); }
+            setConsecutiveTimeouts(0);
+
+            if(mode === 'offline-bot') { 
+                const botName = `Robot (${botLevel === 'easy' ? 'Mudah' : botLevel === 'medium' ? 'Sedang' : 'Sulit'})`;
+                setPlayerNamesList({0: playerName, 1: botName}); 
+                setPlayerAvatarsList({0: playerAvatar, 1: ALL_AVATARS.find(a => a.label === 'Robot Mengedip').icon}); // Ganti dengan ikon Bot
+                setChats([{senderName: "Bot", text: botMessages[botLevel].quote}]); 
+            }
         }, 3000);
     };
 
@@ -940,10 +1309,12 @@ function SequenceGameInternal() {
             }));
             const roomRef = getRoomRef(newRoomId);
             await setDoc(roomRef, {
-                hostId: user.uid, players: [user.uid], maxPlayers: pCount, playerNames: {[0]: playerName},
+                hostId: user.uid, players: [user.uid], maxPlayers: pCount, 
+                playerNames: {[0]: playerName}, playerAvatars: {[0]: playerAvatar}, // Simpan Avatar Emoji
                 status: 'waiting', turn: 0, winner: null, board: JSON.stringify(initialBoard), hands: JSON.stringify({}), deck: JSON.stringify([]),
                 chats: [{senderName: "SYSTEM", text: "Room dibuat", senderIndex: -1}], createdAt: Date.now(),
-                lastPlayedCard: null, lastMove: null, scores: {0:0, 1:0}, winningLines: JSON.stringify([]), scoredIds: JSON.stringify([])
+                lastPlayedCard: null, lastMove: null, scores: {0:0, 1:0}, winningLines: JSON.stringify([]), scoredIds: JSON.stringify([]),
+                consecutiveTimeouts: 0,
             });
             setRoomId(newRoomId); setPlayerIndex(0); setMaxPlayers(pCount); setAppMode('online-share'); setLoadingText("");
         } catch (e) { 
@@ -976,7 +1347,6 @@ function SequenceGameInternal() {
             if (snap.exists()) {
                 const data = snap.data();
                 
-                // Cek apakah room penuh
                 if (data.players.length >= data.maxPlayers && !data.players.includes(user.uid)) {
                     setToast({sender:'SYS', text:'Room Penuh!', type:'error'});
                     setLoadingText("");
@@ -986,7 +1356,11 @@ function SequenceGameInternal() {
                 let myIdx = data.players.indexOf(user.uid);
                 if (myIdx === -1) { 
                     myIdx = data.players.length; 
-                    await updateDoc(roomRef, { players: arrayUnion(user.uid), [`playerNames.${myIdx}`]: playerName }); 
+                    await updateDoc(roomRef, { 
+                        players: arrayUnion(user.uid), 
+                        [`playerNames.${myIdx}`]: playerName,
+                        [`playerAvatars.${myIdx}`]: playerAvatar, // Simpan Avatar Emoji
+                    }); 
                     await updateDoc(roomRef, { chats: arrayUnion({ senderName: "WASIT", text: `${playerName} bergabung.`, senderIndex: -1 }) });
                 }
                 setRoomId(joinCodeInput); setPlayerIndex(myIdx); setMaxPlayers(data.maxPlayers);
@@ -1042,69 +1416,72 @@ function SequenceGameInternal() {
 
     if (appMode === 'dealing') return <div className="min-h-screen bg-[#050505] flex items-center justify-center relative overflow-hidden"><DealingOverlay onComplete={()=>{resetGameState(); setAppMode('menu'); setIsDealing(false);}}/></div>;
 
+    // FIX: Deklarasikan myAvatar di sini agar dapat diakses oleh semua blok render
+    const myAvatar = playerAvatar || ALL_AVATARS[0].icon;
+
     if (appMode === 'menu') {
         return (
-            <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4 font-sans relative overflow-hidden">
-                 <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-900/20 via-[#050505] to-[#050505]"></div>
-                 {showBotSelectModal && (
-                     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-                         <div className="bg-gradient-to-br from-zinc-900 to-black border border-amber-500/50 p-1 rounded-2xl w-full max-w-sm animate-drop-in shadow-[0_0_50px_rgba(245,158,11,0.3)]">
-                             <div className="bg-[#111] rounded-xl p-6 relative overflow-hidden">
-                                 <div className="absolute top-0 right-0 p-4 opacity-20"><Bot size={100} className="text-amber-500"/></div>
-                                 <h3 className="text-xl font-black text-white mb-1 uppercase tracking-wider relative z-10">Tingkat Kesulitan</h3>
-                                 <p className="text-zinc-400 text-xs mb-6 relative z-10">Seberapa pintar robot yang ingin Anda lawan?</p>
-                                 <div className="space-y-3 relative z-10">
-                                     <button onClick={() => { setBotLevel('easy'); setShowBotSelectModal(false); initGame('offline-bot'); }} className="w-full py-4 bg-gradient-to-r from-emerald-600 to-emerald-800 hover:from-emerald-500 hover:to-emerald-700 rounded-lg font-black uppercase tracking-widest text-sm transition-all border border-emerald-400/30 flex items-center justify-between px-4 group"><span>MUDAH</span> <span className="text-emerald-200 group-hover:translate-x-1 transition-transform">😊</span></button>
-                                     <button onClick={() => { setBotLevel('medium'); setShowBotSelectModal(false); initGame('offline-bot'); }} className="w-full py-4 bg-gradient-to-r from-amber-600 to-amber-800 hover:from-amber-500 hover:to-amber-700 rounded-lg font-black uppercase tracking-widest text-sm transition-all border border-amber-400/30 flex items-center justify-between px-4 group"><span>SEDANG</span> <span className="text-amber-200 group-hover:translate-x-1 transition-transform">🤔</span></button>
-                                     <button onClick={() => { setBotLevel('hard'); setShowBotSelectModal(false); initGame('offline-bot'); }} className="w-full py-4 bg-gradient-to-r from-rose-600 to-rose-800 hover:from-rose-500 hover:to-rose-700 rounded-lg font-black uppercase tracking-widest text-sm transition-all border border-rose-400/30 flex items-center justify-between px-4 group"><span>SULIT</span> <span className="text-rose-200 group-hover:translate-x-1 transition-transform">😈</span></button>
-                                 </div>
-                                 <button onClick={() => setShowBotSelectModal(false)} className="mt-6 w-full py-2 text-zinc-500 text-xs font-bold hover:text-white transition-colors">KEMBALI</button>
-                             </div>
-                         </div>
-                     </div>
-                 )}
-                 {showGuideModal && (
-                     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-                         <div className="bg-zinc-900 border border-white/20 p-6 rounded-2xl w-full max-w-md max-h-[80vh] overflow-y-auto animate-drop-in">
-                             <div className="flex justify-between items-center mb-4">
-                                 <h3 className="text-xl font-bold text-amber-500">Panduan Bermain</h3>
-                                 <button onClick={()=>setShowGuideModal(false)}><X size={20} className="text-zinc-400"/></button>
-                             </div>
-                             <div className="text-sm text-zinc-300 space-y-3 leading-relaxed">
-                                 <p><strong>Tujuan:</strong> Buat **3 baris** (sequence) yang terdiri dari 5 chip warna Anda.</p>
-                                 <p><strong>Kartu Jack:</strong></p>
-                                 <ul className="list-disc pl-5 space-y-1">
-                                     <li><span className="text-rose-400 font-bold">Jack Dua Mata:</span> Wild Card (Taruh di mana saja). **Tidak bisa menimpa chip (sudah terisi)**.</li>
-                                     <li><span className="text-rose-400 font-bold">Jack Satu Mata:</span> Remove (Buang chip lawan yang **BELUM terkunci**).</li>
-                                 </ul>
-                                 <p><strong>Aturan Khusus:</strong></p>
-                                 <ul className="list-disc pl-5 space-y-1">
-                                    <li>**Kunci (Lock):** Baris 5 chip yang sudah jadi akan terkunci **permanen** dan tidak bisa dibuang oleh Jack.</li>
-                                    <li>**Anti-Ekstensi:** Baris 5 chip yang sudah terkunci **tidak bisa** disambung menjadi 6, 7, atau lebih untuk mendapatkan poin tambahan.</li>
-                                    <li>**Simpang (Intersection):** Baris 5 chip baru dapat dibuat dengan **maksimal satu chip non-corner** yang sudah terkunci (locked) dari tim Anda. Chip yang terkunci ini berfungsi sebagai simpang (intersection).</li>
-                                    <li>**Sudut (Corner):** Empat chip sudut dihitung sebagai chip tim Anda (Wild) saat membuat sequence. Corner **tidak dapat** di-remove oleh lawan dan tidak terhitung sebagai 'simpang' yang dibatasi. Boleh disimpang dengan 4 kartu terkunci (maksimal 1 chip terkunci non-corner tim sendiri).</li>
-                                 </ul>
-                             </div>
-                         </div>
-                     </div>
-                 )}
-                 <div className="relative z-10 w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl text-center">
-                      <LogoFourCards />
-                      <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-amber-300 to-amber-600 mb-1 tracking-tight">SEQUENCE</h1>
-                      <p className="text-zinc-400 text-xs font-bold tracking-[0.3em] uppercase mb-1">Ultimate Edition</p>
-                      <p className="text-amber-600/80 text-[10px] font-mono tracking-widest mb-6">BY SETIAWAN</p>
-                      <div className="mb-6 flex justify-center"><span className="bg-emerald-900/40 border border-emerald-500/30 text-emerald-400 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1"><ShieldCheck size={12} /> Aman Firebase</span></div>
-                      <div className="space-y-4">
-                           <div className="relative group">
-                               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Edit3 className="text-amber-500/50 group-focus-within:text-amber-500 transition-colors" size={18} /></div>
-                               <input type="text" value={playerName} onChange={e=>setPlayerName(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all font-bold text-center tracking-wide" placeholder="Nama Pemain"/>
-                           </div>
-                           <div className="grid grid-cols-2 gap-3 pt-2">
-                                <button onClick={()=>setShowBotSelectModal(true)} className="bg-gradient-to-br from-indigo-600 to-indigo-800 hover:from-indigo-500 hover:to-indigo-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-900/30 flex flex-col items-center gap-2 transition-all hover:scale-[1.02] border border-white/10"><Bot size={24} /> VS Robot</button>
-                                <button onClick={()=>setAppMode('online-setup')} className="bg-gradient-to-br from-rose-600 to-rose-800 hover:from-rose-500 hover:to-rose-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-rose-900/30 flex flex-col items-center gap-2 transition-all hover:scale-[1.02] border border-white/10"><Users size={24} /> Online</button>
-                           </div>
-                           <button onClick={()=>setShowGuideModal(true)} className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl font-bold text-zinc-300 text-sm flex items-center justify-center gap-2 border border-white/5 transition-all"><BookOpen size={16} /> Panduan Bermain</button>
+            <div className="min-h-screen bg-felt-pattern flex items-center justify-center p-4 font-sans relative overflow-hidden">
+                 
+                 {/* Modals - Rendered on top of everything at z-[1000] */}
+                 {showProfileModal && <ProfileSelectorModal currentName={playerName} currentAvatar={playerAvatar} onSave={(name, avatar) => { setPlayerName(name); setPlayerAvatar(avatar); setShowProfileModal(false); }} onClose={() => setShowProfileModal(false)}/>}
+                 {showInfoModal && <GameInfoModal onClose={() => setShowInfoModal(false)} />}
+                 {showBotSelectModal && <BotSelectModal botMessages={botMessages} onSelect={(key) => { setBotLevel(key); setShowBotSelectModal(false); initGame('offline-bot'); }} onClose={() => setShowBotSelectModal(false)} />}
+
+                 {/* Decorative background effect */}
+                 <MenuBackgroundEffect />
+
+                 {/* The main menu box - Kotak Menu Utama */}
+                 <div className="relative z-10 w-full max-w-md bg-white/5 backdrop-blur-lg border border-white/20 p-8 rounded-3xl shadow-2xl text-center 
+                             /* Colorful border/ring */
+                             ring-4 ring-offset-4 ring-offset-[#154360] ring-amber-500/50
+                 ">
+                      
+                      {/* Keterangan Game */}
+                      <div className="p-4 bg-black/30 rounded-xl mb-4 border border-amber-500/30">
+                           <h3 className="text-xs font-bold uppercase text-amber-300 flex items-center justify-center gap-1 mb-2">
+                               <Aperture size={14}/> INFO GAME
+                           </h3>
+                           <p className="text-[10px] text-zinc-300 italic">Susun 3 baris berisi 5 chip tim Anda untuk menang! Gunakan Jack dengan bijak.</p>
+                           {/* Diganti ke tombol Informasi Game baru di bawah */}
+                           {/* <button onClick={() => setShowInfoModal(true)} className="mt-2 text-blue-400 text-xs font-bold hover:underline relative z-20">Lihat Panduan Lengkap</button> */}
                       </div>
+                      
+                      {/* --- DEBUG/TEST CLICK BUTTON (REMOVED) --- */}
+                      
+
+                      <LogoFourCards />
+                      <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-amber-300 to-amber-600 mb-6 tracking-tight">SEQUENCE</h1>
+                      
+                      {/* Player Profile */}
+                      <div className="flex items-center justify-between bg-black/40 border border-white/10 rounded-xl px-4 py-2 mb-4 relative z-20">
+                           <div className="flex items-center gap-3">
+                                {/* Avatar Menu Utama (Emoji) */}
+                                <div className="flex items-center justify-center w-10 h-10 rounded-full ring-2 ring-amber-500/50 bg-white/10">
+                                    <span className="text-xl" style={{ lineHeight: 1 }}>{myAvatar}</span>
+                                </div>
+                                <span className="text-white font-bold tracking-wide">{playerName}</span>
+                           </div>
+                           <button onClick={() => setShowProfileModal(true)} className="bg-zinc-700 hover:bg-zinc-600 text-white p-2 rounded-full transition-colors">
+                               <Edit3 size={16}/>
+                           </button>
+                      </div>
+
+                      <div className="space-y-4">
+                           <div className="grid grid-cols-2 gap-3 pt-2">
+                                {/* Tambahkan z-index pada tombol utama untuk memastikannya berada di atas */}
+                                <button onClick={()=>setShowBotSelectModal(true)} className="relative z-20 bg-gradient-to-br from-indigo-600 to-indigo-800 hover:from-indigo-500 hover:to-indigo-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-900/30 flex flex-col items-center gap-2 transition-all hover:scale-[1.02] border border-white/10"><Bot size={24} /> VS Robot</button>
+                                <button onClick={()=>setAppMode('online-setup')} className="relative z-20 bg-gradient-to-br from-rose-600 to-rose-800 hover:from-rose-500 hover:to-rose-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-rose-900/30 flex flex-col items-center gap-2 transition-all hover:scale-[1.02] border border-white/10"><Users size={24} /> Online</button>
+                           </div>
+                           {/* Tombol INFORMASI GAME baru */}
+                           <button onClick={()=>setShowInfoModal(true)} className="relative z-20 w-full py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl font-bold text-zinc-300 text-sm flex items-center justify-center gap-2 border border-white/5 transition-all">
+                                <PlayStationIcon size={16} className="text-white"/> INFORMASI GAME
+                           </button>
+                      </div>
+
+                       <div className="mt-6 pt-4 border-t border-white/10">
+                            <p className="text-[10px] text-zinc-500">Karya Setiawan | Jangan lupa mampir di Ayam Bakar Spesial Bibir By WKA</p>
+                       </div>
                  </div>
             </div>
         );
@@ -1112,7 +1489,7 @@ function SequenceGameInternal() {
 
     if (appMode === 'online-setup') {
         return (
-            <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4 font-sans relative">
+            <div className="min-h-screen bg-felt-pattern flex items-center justify-center p-4 font-sans relative">
                  <div className="w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl relative z-10">
                       <button onClick={()=>setAppMode('menu')} className="absolute top-4 right-4 text-zinc-500 hover:text-white transition-colors bg-white/10 rounded-full p-1"><X size={20}/></button>
                       <h2 className="text-2xl font-bold text-white text-center mb-6 tracking-wide">LOBBY ONLINE</h2>
@@ -1138,7 +1515,7 @@ function SequenceGameInternal() {
 
     if (appMode === 'online-share') {
         return (
-            <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
+            <div className="min-h-screen bg-felt-pattern flex items-center justify-center p-4">
                  <div className="w-full max-w-md bg-zinc-900 border border-amber-500/20 p-8 rounded-3xl text-center animate-drop-in">
                       <h2 className="text-zinc-400 text-sm font-bold uppercase tracking-widest mb-4">Ruangan Dibuat</h2>
                       <div className="bg-black/50 p-6 rounded-2xl border border-white/10 mb-6">
@@ -1156,13 +1533,31 @@ function SequenceGameInternal() {
     const myTeam = appMode === 'online-game' ? getTeam(playerIndex) : 0;
     const isBlueTeam = myTeam === 0;
     const opponentTeam = myTeam === 0 ? 1 : 0;
+    const isMyTurn = (appMode === 'offline-bot' && turn === 0) || (appMode === 'online-game' && turn === playerIndex);
+    const timeDisplay = formatTime(timeLeft);
+    const currentTimerColor = timeLeft < 30 ? 'text-rose-500' : 'text-amber-300';
+
+    const SidePanelItem = ({ title, value, icon: Icon, colorClass, size = 16, timeUnit = false, showIfTurn = false }) => {
+        if (showIfTurn && !isMyTurn) return null;
+        return (
+            // Panel HUD: Menggunakan warna yang lebih cerah
+            <div className={`flex items-center justify-between px-3 py-2 rounded-lg border-2 bg-[#1A538A]/70 shadow-lg ${colorClass}`}>
+                <div className="flex items-center gap-2">
+                    <Icon size={size} className={colorClass.includes('text-white') ? '' : colorClass.replace('border-', 'text-')} />
+                    <span className="text-[10px] font-bold uppercase text-zinc-400">{title}</span>
+                </div>
+                <span className={`text-xl font-black ${timeUnit ? 'font-mono' : 'text-white'}`}>{value}</span>
+            </div>
+        );
+    };
+
 
     return (
         <div className="min-h-screen bg-felt-pattern text-slate-200 flex flex-col overflow-hidden relative select-none">
              {showForfeitModal && <ForfeitConfirmationModal onConfirm={confirmForfeitAndQuit} onCancel={() => setShowForfeitModal(false)} />}
              
-             {/* --- HEADER --- */}
-             <header className="h-14 bg-[#050505]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-4 z-50">
+             {/* --- HEADER (CLEANED) --- */}
+             <header className="h-14 bg-[#0E3355]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-4 z-50">
                   <div className="flex items-center gap-3">
                       <button 
                           onClick={handleQuit} 
@@ -1174,32 +1569,15 @@ function SequenceGameInternal() {
                           <X size={14}/>
                       </button>
                       <div>
-                          <h1 className="text-sm font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-amber-500 tracking-wider">SEQUENCE</h1>
-                          {appMode === 'online-game' && <div className="text-[10px] font-mono text-zinc-500 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> ROOM: {roomId}</div>}
+                          <h1 className="text-sm font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-amber-500 tracking-wider">SEQUENCE ULTIMATE</h1>
                       </div>
                   </div>
 
                   <div className="flex items-center gap-4">
-                      <div className={`px-3 py-1 rounded-full border border-white/10 font-black text-sm tracking-wide flex items-center ${isBlueTeam ? 'bg-blue-900/40 text-blue-300' : 'bg-rose-900/40 text-rose-300'}`}>
-                          <div className="flex items-center gap-1">
-                              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                              <span>{scores[0]}</span>
-                          </div>
-                          <span className="mx-2 text-zinc-500">-</span>
-                          <div className="flex items-center gap-1">
-                              <span>{scores[1]}</span>
-                              <div className="w-2 h-2 rounded-full bg-rose-500"></div>
-                          </div>
-                      </div>
-
-                      <div className="flex items-center gap-1 bg-amber-900/30 rounded-full px-3 py-1 border border-amber-500/20">
-                           <Trophy size={12} className="text-amber-500"/>
-                           <span className="text-xs font-bold text-amber-200">TARGET: {WINNING_SCORE}</span>
-                      </div>
-
-                      <div className="flex items-center gap-1 bg-black/40 rounded-full px-3 py-1 border border-white/5">
-                           <Clock size={12} className="text-zinc-500"/>
-                           <span className={`text-xs font-mono font-bold ${timeLeft < 30 ? 'text-rose-500 animate-pulse' : 'text-zinc-300'}`}>{formatTime(timeLeft)}</span>
+                      {/* Konter Timeouts */}
+                      <div className={`flex items-center gap-1 bg-rose-900/30 rounded-full px-3 py-1 border border-rose-500/20 ${consecutiveTimeouts > 0 ? 'visible' : 'hidden'}`}>
+                           <AlertOctagon size={12} className="text-rose-400"/>
+                           <span className="text-xs font-bold text-rose-300">SKIP: {consecutiveTimeouts}/2</span>
                       </div>
                       <button onClick={cycleSoundMode} className="text-zinc-500 hover:text-amber-400 transition-colors">
                           {soundMode === 'sound' ? <Volume2 size={18}/> : soundMode === 'vibrate' ? <Smartphone size={18} className="animate-pulse"/> : <VolumeX size={18}/>}
@@ -1207,79 +1585,159 @@ function SequenceGameInternal() {
                   </div>
              </header>
 
-             {/* --- MAIN BOARD AREA --- */}
+             {/* --- MAIN BOARD AREA - Menggunakan grid untuk layout responsif --- */}
              <main className="flex-grow relative flex items-center justify-center p-1 overflow-hidden">
                   <OpponentPlayedCard card={visualPlayedCard} />
                   
-                  <div className="relative z-10 w-full max-w-[98vmin] aspect-square bg-[#1e293b] p-[2px] rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-white/10">
-                       <div className="w-full h-full grid grid-cols-10 gap-[1px] bg-[#0f172a] border border-white/5 relative">
-                            {/* SVG LAYER UNTUK GARIS KEMENANGAN (NYATA & TEBAL) */}
-                            {/* NOTE: Koordinat (r, c) di sini adalah 0-9 untuk baris dan kolom. */}
-                            <svg className="absolute inset-0 w-full h-full pointer-events-none z-40">
-                                {winningLines.map((lineObj, idx) => {
-                                    const start = lineObj.line[0];
-                                    const end = lineObj.line[4];
-                                    // Koordinat pusat cell (dalam %)
-                                    // PENTING: Untuk memastikan garis berhenti TEPAT di pusat chip ke-5, kita perlu memastikan
-                                    // lineObj.line selalu memiliki 5 poin. CheckNewSequences sudah menjamin ini.
-                                    const x1 = start.c * 10 + 5;
-                                    const y1 = start.r * 10 + 5;
-                                    const x2 = end.c * 10 + 5;
-                                    const y2 = end.r * 10 + 5;
-                                    
-                                    const color = lineObj.team === 0 ? '#3b82f6' : '#f43f5e'; // Biru atau Merah
-                                    
-                                    return (
-                                        <line 
-                                            key={idx}
-                                            x1={`${x1}%`} y1={`${y1}%`}
-                                            x2={`${x2}%`} y2={`${y2}%`}
-                                            stroke={color}
-                                            strokeWidth="3.5%"  /* LEBIH TEBAL LAGI */
-                                            strokeLinecap="round"
-                                            strokeOpacity="1"
-                                            className="winning-line"
-                                        />
-                                    );
-                                })}
-                            </svg>
+                  <div className="grid grid-cols-1 md:grid-cols-[auto_1fr_auto] h-full w-full max-w-[1200px] gap-2 md:gap-4 p-2">
+                      
+                      {/* --- KIRI: PLAYER INFO / SCORE LAWAN --- */}
+                      <div className="hidden md:flex flex-col justify-start space-y-3 p-2 w-48">
+                          {/* Slot Pemain Lawan (P1/P3 Tim Merah) */}
+                          <div className="bg-rose-900/40 border border-rose-500/30 rounded-xl p-3 shadow-md">
+                              <div className="flex items-center gap-3">
+                                  {/* Avatar Lawan (Emoji) */}
+                                  <div className="flex items-center justify-center w-10 h-10 rounded-full ring-2 ring-rose-400/50 bg-white/10">
+                                      <span className="text-xl" style={{ lineHeight: 1 }}>{playerAvatarsList[opponentTeam] || ALL_AVATARS[0].icon}</span>
+                                  </div>
+                                  <div>
+                                      <p className="text-sm font-bold text-rose-300">{playerNamesList[opponentTeam] || 'Lawan'}</p>
+                                      <p className="text-xs text-zinc-400">Tim Merah</p>
+                                  </div>
+                              </div>
+                              <div className="mt-3 flex justify-between items-center border-t border-rose-500/30 pt-2">
+                                  <span className="text-xs font-bold text-zinc-400">SKOR TIM:</span>
+                                  <span className="text-3xl font-black text-rose-500">{scores[opponentTeam]}</span>
+                              </div>
+                          </div>
+                      </div>
 
-                            {board.map((row, r) => row.map((cell, c) => {
-                                const isLast = lastMove && lastMove.r === r && lastMove.c === c;
-                                let isHighlight = false;
-                                if (selectedCardIdx !== null) {
-                                    const card = hands[appMode==='online-game'?playerIndex:turn]?.[selectedCardIdx];
-                                    if (card) {
-                                        if (cell.chip === null) {
-                                            if (isTwoEyedJack(card.rank, card.suit)) {
-                                                isHighlight = cell.type !== 'corner'; 
-                                            } else if (cell.rank === card.rank && cell.suit === card.suit) {
-                                                isHighlight = true; 
-                                            }
-                                        } else if (isOneEyedJack(card.rank, card.suit) && getTeam(cell.chip) !== myTeam && !cell.locked) {
-                                            isHighlight = true; 
-                                        }
-                                    }
-                                }
-                                const isWinningChipForCell = winningChipSet.has(cell.id);
-                                const isError = errorCell && errorCell.r === r && errorCell.c === c;
-                                const isAnimatingOut = animatingOutCells.has(`${r},${c}`);
+                      {/* --- TENGAH: PAPAN UTAMA --- */}
+                      <div className="relative flex items-center justify-center w-full h-full">
+                          <div className="relative z-10 w-full max-w-[98vmin] aspect-square bg-board-base p-[2px] rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-white/10">
+                              <div className="w-full h-full grid grid-cols-10 gap-[1px] bg-board-base border border-white/5 relative">
+                                  <svg className="absolute inset-0 w-full h-full pointer-events-none z-40">
+                                      {winningLines.map((lineObj, idx) => {
+                                          const start = lineObj.line[0];
+                                          const end = lineObj.line[4];
+                                          const x1 = start.c * 10 + 5;
+                                          const y1 = start.r * 10 + 5;
+                                          const x2 = end.c * 10 + 5;
+                                          const y2 = end.r * 10 + 5;
+                                          const color = lineObj.team === 0 ? '#3b82f6' : '#f43f5e'; 
+                                          
+                                          return (
+                                              <line 
+                                                  key={idx}
+                                                  x1={`${x1}%`} y1={`${y1}%`}
+                                                  x2={`${x2}%`} y2={`${y2}%`}
+                                                  stroke={color}
+                                                  strokeWidth="3.5%"
+                                                  strokeLinecap="round"
+                                                  strokeOpacity="1"
+                                                  className="winning-line"
+                                              />
+                                          );
+                                      })}
+                                  </svg>
 
-                                return (
-                                    <BoardCell 
-                                        key={cell.id} 
-                                        cell={cell} 
-                                        isLast={isLast}
-                                        lastMoveType={lastMove?.type}
-                                        isHighlight={isHighlight}
-                                        isOccupiedError={isError}
-                                        animatingOut={isAnimatingOut}
-                                        onClick={handleBoardClick}
-                                        isWinningChip={isWinningChipForCell} 
-                                    />
-                                );
-                            }))}
-                       </div>
+                                  {board.map((row, r) => row.map((cell, c) => {
+                                      const isLast = lastMove && lastMove.r === r && lastMove.c === c;
+                                      let isHighlight = false;
+                                      if (selectedCardIdx !== null) {
+                                          const card = hands[appMode==='online-game'?playerIndex:turn]?.[selectedCardIdx];
+                                          if (card) {
+                                              if (cell.chip === null) {
+                                                  if (isTwoEyedJack(card.rank, card.suit)) {
+                                                      isHighlight = cell.type !== 'corner'; 
+                                                  } else if (cell.rank === card.rank && cell.suit === card.suit) {
+                                                      isHighlight = true; 
+                                                  }
+                                              } else if (isOneEyedJack(card.rank, card.suit) && getTeam(cell.chip) !== myTeam && !cell.locked) {
+                                                  isHighlight = true; 
+                                              }
+                                          }
+                                      }
+                                      const isWinningChipForCell = winningChipSet.has(cell.id);
+                                      const isError = errorCell && errorCell.r === r && errorCell.c === c;
+                                      const isAnimatingOut = animatingOutCells.has(`${r},${c}`);
+
+                                      return (
+                                          <BoardCell 
+                                              key={cell.id} 
+                                              cell={cell} 
+                                              isLast={isLast}
+                                              lastMoveType={lastMove?.type}
+                                              isHighlight={isHighlight}
+                                              isOccupiedError={isError}
+                                              animatingOut={isAnimatingOut}
+                                              onClick={handleBoardClick}
+                                              isWinningChip={isWinningChipForCell} 
+                                          />
+                                      );
+                                  }))}
+                              </div>
+                          </div>
+                      </div>
+
+                      {/* --- KANAN: HUD RINGKAS --- */}
+                      <div className="flex flex-col md:w-48 justify-start space-y-3 p-2 order-first md:order-last">
+                          
+                          {/* Timer Cepat */}
+                          <div className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 shadow-lg ${isMyTurn ? 'border-amber-500 bg-amber-900/30' : 'border-zinc-700 bg-[#1A538A]/50'}`}>
+                              <span className="text-[10px] font-bold uppercase text-zinc-400">DURASI GILIRAN</span>
+                              <div className={`text-4xl font-mono font-black ${currentTimerColor} drop-shadow-md`}>
+                                  {isMyTurn ? timeDisplay.split(':')[0] : '5'}
+                                  <span className="text-2xl font-normal">:</span>
+                                  {isMyTurn ? timeDisplay.split(':')[1] : '00'}
+                              </div>
+                          </div>
+
+                          {/* Detail Tim Sendiri (Mobile/Tablet) */}
+                          <div className={`flex items-center gap-3 md:hidden px-3 py-2 rounded-xl border-2 ${isBlueTeam ? 'border-blue-500 bg-blue-900/40' : 'border-rose-500 bg-rose-900/40'}`}>
+                              {/* Avatar Saya (Emoji) */}
+                              <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-white/10 ring-2 ${isBlueTeam ? 'ring-blue-400' : 'ring-rose-400'}`}>
+                                  <span className="text-lg" style={{ lineHeight: 1 }}>{myAvatar}</span>
+                              </div>
+                              <div>
+                                  <p className="text-sm font-bold text-white">{playerName}</p>
+                                  <p className="text-xs text-zinc-400">Tim {isBlueTeam ? 'Biru' : 'Merah'}</p>
+                              </div>
+                          </div>
+
+                          <SidePanelItem 
+                              title="SKOR TIM SAYA"
+                              value={scores[myTeam]}
+                              icon={Diamond}
+                              colorClass={isBlueTeam ? 'text-blue-400 border-blue-500/30' : 'text-rose-400 border-rose-500/30'}
+                          />
+                          <SidePanelItem 
+                              title="SKOR TARGET"
+                              value={WINNING_SCORE}
+                              icon={Trophy}
+                              colorClass="text-amber-400 border-amber-500/30"
+                          />
+                          <SidePanelItem 
+                              title="GILIRAN KE-"
+                              value={turn + 1}
+                              icon={RotateCcw}
+                              colorClass="text-zinc-300 border-zinc-500/30"
+                          />
+                          {/* Slot Pemain Lawan (P1/P3 Tim Merah) - Hanya Tampil di Mobile */}
+                          <div className="md:hidden bg-rose-900/40 border border-rose-500/30 rounded-xl p-3 shadow-md">
+                              <div className="flex items-center gap-3">
+                                  {/* Avatar Lawan Mobile (Emoji) */}
+                                  <div className="flex items-center justify-center w-8 h-8 rounded-full ring-2 ring-rose-400/50 bg-white/10">
+                                      <span className="text-lg" style={{ lineHeight: 1 }}>{playerAvatarsList[opponentTeam] || ALL_AVATARS[0].icon}</span>
+                                  </div>
+                                  <div>
+                                      <p className="text-sm font-bold text-rose-300">{playerNamesList[opponentTeam] || 'Lawan'}</p>
+                                      <p className="text-xs text-zinc-400">Tim Merah</p>
+                                  </div>
+                              </div>
+                          </div>
+
+                      </div>
                   </div>
              </main>
 
@@ -1289,7 +1747,7 @@ function SequenceGameInternal() {
                       <p className="text-[10px] font-bold text-amber-100 drop-shadow-md tracking-wide animate-pulse">{message}</p>
                   </div>
 
-                  <div className="bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 pt-3 pb-4 px-2 flex flex-col items-center shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+                  <div className="bg-[#1A538A]/95 backdrop-blur-xl border-t border-white/10 pt-3 pb-4 px-2 flex flex-col items-center shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
                        <div className="flex gap-2 overflow-x-auto max-w-full scrollbar-hide px-2 py-1 snap-x">
                             {(hands[appMode === 'online-game' ? playerIndex : 0] || []).map((card, i) => (
                                 <HandCard 
@@ -1308,15 +1766,22 @@ function SequenceGameInternal() {
                        </div>
                        
                        <div className="absolute top-0 -translate-y-1/2 flex gap-4">
-                            <div className={`px-4 py-1 rounded-full border-2 shadow-lg font-black text-xs tracking-wider flex items-center gap-2 bg-[#0f172a] ${isBlueTeam ? 'border-blue-500 text-blue-400 scale-110 z-10' : 'border-rose-500 text-rose-400 scale-110 z-10'}`}>
+                            <div className={`px-4 py-1 rounded-full border-2 shadow-lg font-black text-xs tracking-wider flex items-center gap-2 bg-[#1A538A] ${isBlueTeam ? 'border-blue-500 text-blue-400 scale-110 z-10' : 'border-rose-500 text-rose-400 scale-110 z-10'}`}>
                                  <div className={`w-2 h-2 rounded-full ${isBlueTeam ? 'bg-blue-500' : 'bg-rose-500'}`}></div>
-                                 {isBlueTeam ? 'TIM BIRU' : 'TIM MERAH'}: {scores[myTeam]}
+                                 {isBlueTeam ? 'TIM BIRU' : 'TIM MERAH'}
                             </div>
-                            <button onClick={()=>{setShowChat(!showChat); setUnreadCount(0);}} className="w-8 h-8 rounded-full bg-amber-600 border border-white/20 shadow-lg flex items-center justify-center text-white hover:scale-110 transition-transform">
+                            {/* Tombol Chat dipindahkan ke kanan atas area permainan */}
+                            <button onClick={()=>{setShowChat(!showChat); setUnreadCount(0);}} className="w-8 h-8 rounded-full bg-amber-600 border border-white/20 shadow-lg flex items-center justify-center text-white hover:scale-110 transition-transform md:hidden">
                                 <MessageCircle size={16} />
                                 {unreadCount > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-[8px] flex items-center justify-center">{unreadCount}</span>}
                             </button>
                        </div>
+                       {/* Tombol Chat untuk desktop (tidak mengganggu kartu pemain) */}
+                       <button onClick={()=>{setShowChat(!showChat); setUnreadCount(0);}} className="hidden md:block absolute top-1/2 right-4 -translate-y-1/2 w-10 h-10 rounded-full bg-amber-600 border border-white/20 shadow-lg flex items-center justify-center text-white hover:scale-110 transition-transform">
+                            <MessageCircle size={20} />
+                            {unreadCount > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] flex items-center justify-center">{unreadCount}</span>}
+                       </button>
+
                   </div>
              </footer>
 
@@ -1348,12 +1813,14 @@ function SequenceGameInternal() {
                            <div className="bg-gradient-to-b from-zinc-900 to-black rounded-[20px] p-8 flex flex-col items-center text-center relative overflow-hidden">
                                 <div className={`absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] ${winner === 0 ? 'from-blue-500 via-transparent to-transparent' : 'from-rose-500 via-transparent to-transparent'}`}></div>
 
-                                <Crown size={80} className={`mb-6 drop-shadow-[0_0_30px_rgba(255,255,255,0.4)] ${winner===0 ? 'text-blue-400' : 'text-rose-400'} animate-bounce`} />
+                                {/* Mengganti Crown dengan Trophy dan animasi spin */}
+                                <Trophy size={80} className={`mb-6 drop-shadow-[0_0_30px_rgba(255,255,255,0.4)] ${winner===0 ? 'text-blue-400' : 'text-rose-400'} animate-trophy-spin`} />
                                 
                                 <h2 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-zinc-400 mb-2 tracking-tighter">VICTORY!</h2>
-                                <p className={`text-xl font-bold tracking-[0.2em] mb-8 ${winner===0 ? 'text-blue-500' : 'text-rose-500'}`}>
+                                <p className={`text-xl font-bold tracking-[0.2em] mb-4 ${winner===0 ? 'text-blue-500' : 'text-rose-500'}`}>
                                     {winner === 0 ? "TIM BIRU MENANG" : "TIM MERAH MENANG"}
                                 </p>
+                                <p className="text-xs italic text-zinc-400 mb-8">Terima kasih telah menjadi lawan yang baik.</p>
                                 
                                 <div className="flex gap-8 mb-10 w-full justify-center">
                                     <div className="text-center">
@@ -1367,7 +1834,10 @@ function SequenceGameInternal() {
                                     </div>
                                 </div>
 
-                                <button onClick={() => { resetGameState(); setAppMode('menu'); }} className="w-full py-4 bg-white text-black rounded-xl font-black tracking-widest hover:bg-zinc-200 transition-all hover:scale-105 active:scale-95 shadow-xl">
+                                <button 
+                                    onClick={handleReturnToMenu} 
+                                    className="w-full py-4 bg-white text-black rounded-xl font-black tracking-widest hover:bg-zinc-200 transition-all hover:scale-105 active:scale-95 shadow-xl relative z-20"
+                                >
                                     KEMBALI KE MENU UTAMA
                                 </button>
                            </div>
