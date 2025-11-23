@@ -1,27 +1,20 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, Component } from 'react';
 import { 
-  RotateCw, Trophy, X, Users, Bot, Volume, VolumeX, MessageSquare, Trash2, 
-  AlertTriangle, Clock, ShieldOff, RefreshCw, Loader, User, CheckCircle, 
-  WifiOff, Activity, Zap, Brain, Skull, Smartphone, Sparkles, Grid3x3, 
-  BookOpen, Crown, AlertOctagon, Info, LogOut, Link as LinkIcon, 
-  Shield, Repeat, Layers
+  RotateCcw, Trophy, X, Users, Bot, 
+  Volume2, VolumeX, Clock, Vibrator, Smartphone,
+  ShieldCheck, Loader, MessageCircle, Send, Smile,
+  User, CheckCircle, WifiOff, Edit3, BookOpen, Crown, Ban, Lock, Copy,
+  LogOut, Play, AlertOctagon, HelpCircle, Flame, Sword, Diamond
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove, getDoc } from 'firebase/firestore';
-
-// =========================================================================
-// KONFIGURASI DEPLOYMENT (PENTING UNTUK NETLIFY/GITHUB)
-// =========================================================================
+import { getFirestore, doc, setDoc, onSnapshot, updateDoc, getDoc, arrayUnion } from 'firebase/firestore';
 
 /**
- * PENTING!
- * Saat Anda menaruh proyek di website asli (bukan preview ini), Anda perlu
- * membuat proyek di Firebase Console (https://console.firebase.google.com/).
- * * Setelah proyek dibuat, daftarkan aplikasi web, lalu salin objek
- * 'firebaseConfig' dan tempelkan di bawah ini.
+ * ============================================================================
+ * KONFIGURASI DEPLOYMENT
+ * ============================================================================
  */
-// >>> KUNCI ASLI DARI FIREBASE ANDA TELAH DITEMPELKAN DI SINI <<<
 const YOUR_FIREBASE_CONFIG = {
   apiKey: "AIzaSyD_SGGmHMfpShqGirhf_Vr_os_Xv8ddvfQ",
   authDomain: "sequence-game-ultimate-o-5a7f7.firebaseapp.com",
@@ -29,50 +22,30 @@ const YOUR_FIREBASE_CONFIG = {
   storageBucket: "sequence-game-ultimate-o-5a7f7.firebasestorage.app",
   messagingSenderId: "906233184320",
   appId: "1:906233184320:web:22543d29d668a86f641fa5",
-  measurementId: "G-QHL9LRH0RC" 
-}; 
+  measurementId: "G-QHL9LRH0RC"
+};
 
-// =========================================================================
-// INISIALISASI FIREBASE (JANGAN DIUBAH)
-// =========================================================================
+// --- UTILITAS ---
+const safeParse = (jsonString, fallbackValue) => {
+    if (!jsonString) return fallbackValue;
+    try {
+        const result = JSON.parse(jsonString);
+        return result === null ? fallbackValue : result;
+    } catch (e) { return fallbackValue; }
+};
 
-let app, db, auth;
-let firebaseInitialized = false;
-
-// Cek jika konfigurasi masih placeholder atau kosong
-if (!YOUR_FIREBASE_CONFIG.apiKey || YOUR_FIREBASE_CONFIG.apiKey.includes('GANTI_DENGAN_API_KEY_ANDA')) {
-    console.warn("Konfigurasi Firebase masih placeholder atau kosong. Fitur online dinonaktifkan.");
-    firebaseInitialized = false;
-} else if (YOUR_FIREBASE_CONFIG) {
-  try {
-    app = initializeApp(YOUR_FIREBASE_CONFIG);
-    db = getFirestore(app);
-    auth = getAuth(app);
-    firebaseInitialized = true;
-  } catch (error) {
-    console.error("Kesalahan inisialisasi Firebase. Pastikan konfigurasi sudah benar.", error);
-    firebaseInitialized = false;
-  }
-} else {
-  console.warn("Konfigurasi Firebase belum disiapkan. Fitur online dinonaktifkan.");
-}
-
-// =========================================================================
-// ERROR BOUNDARY (PENCEGAH CRASH TOTAL) - Tambahan
-// =========================================================================
-// FIX: Mengimpor Component secara eksplisit dari React dan menggunakannya.
+// --- ERROR BOUNDARY ---
 class ErrorBoundary extends Component {
-  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
-  static getDerivedStateFromError(error) { return { hasError: true, error: error }; }
+  constructor(props) { super(props); this.state = { hasError: false }; }
+  static getDerivedStateFromError(error) { return { hasError: true }; }
   componentDidCatch(error, errorInfo) { console.error("Game Crash:", error, errorInfo); }
   render() {
     if (this.state.hasError) {
       return (
         <div className="fixed inset-0 bg-[#050505] flex flex-col items-center justify-center text-white p-6 text-center z-[9999]">
-          <h2 className="text-2xl font-black text-red-400 mb-2 tracking-widest">KESALAHAN APLIKASI</h2>
-          <p className="text-zinc-400 mb-6 max-w-md text-sm">Terjadi kesalahan saat memuat komponen utama. Silakan muat ulang.</p>
-          <p className="text-xs text-red-300 font-mono mt-4">Error: {this.state.error ? this.state.error.toString() : 'Unknown Error'}</p>
-          <button onClick={() => { window.location.reload(); }} className="mt-6 px-8 py-3 bg-gradient-to-r from-red-600 to-red-500 rounded-full font-bold shadow-[0_0_20px_rgba(245,158,11,0.4)] hover:scale-105 transition-transform text-sm tracking-widest">MUAT ULANG</button>
+          <WifiOff size={64} className="text-amber-500 mb-4 animate-pulse"/>
+          <h2 className="2xl font-black text-amber-400 mb-2 tracking-widest">GANGGUAN SISTEM</h2>
+          <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="mt-6 px-8 py-3 bg-amber-600 rounded-full font-bold">RESET GAME</button>
         </div>
       );
     }
@@ -80,1037 +53,1332 @@ class ErrorBoundary extends Component {
   }
 }
 
-// =========================================================================
-// DATA PAPAN (LAYOUT KARTU)
-// =========================================================================
+// --- KONFIGURASI GAME ---
+const WINNING_SCORE = 3; 
+const TURN_DURATION = 300; 
+const SUITS = ['♠', '♣', '♥', '♦'];
+const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Q', 'K', 'A'];
+const CARD_BACK_URL = "https://deckofcardsapi.com/static/img/back.png";
+const EMOJIS = ["🔥", "😂", "😎", "😡", "😭", "🤔", "👎", "👍", "🐌", "👻", "🤝", "GG", "👑"];
 
-const REAL_BOARD_PATTERN = {
-  // Papan permainan standar (10x10) dengan sudut "J" (Jack).
-  // 'XX' = Kartu Jack
-  // 'JS' = Jack Sekop (1 Mata, bisa diletakkan di mana saja)
-  // 'JC' = Jack Keriting (2 Mata, bisa diletakkan di mana saja)
-  '0,0': 'XX', '0,1': 'A♠', '0,2': 'K♠', '0,3': 'Q♠', '0,4': '10♠', '0,5': '9♠', '0,6': '8♠', '0,7': '7♠', '0,8': '6♠', '0,9': 'XX',
-  '1,0': 'A♦', '1,1': '5♦', '1,2': '4♦', '1,3': '3♦', '1,4': '2♦', '1,5': 'A♣', '1,6': 'K♣', '1,7': 'Q♣', '1,8': '10♣', '1,9': '5♠',
-  '2,0': 'K♦', '2,1': '6♦', '2,2': '7♦', '2,3': '8♦', '2,4': '9♦', '2,5': '10♦', '2,6': '9♣', '2,7': '8♣', '2,8': '9♣', '2,9': '4♠',
-  '3,0': 'Q♦', '3,1': '7♦', '3,2': '6♣', '3,3': '5♣', '3,4': '4♣', '3,5': '3♣', '3,6': '2♣', '3,7': '7♣', '3,8': '10♣', '3,9': '3♠',
-  '4,0': '10♦', '4,1': '8♦', '4,2': '2♠', '4,3': '3♠', '4,4': '4♠', '4,5': '5♠', '4,6': '6♠', '4,7': '6♣', '4,8': 'Q♣', '4,9': '2♠',
-  '5,0': '9♦', '5,1': '9♦', '5,2': 'A♥', '5,3': 'K♥', '5,4': 'Q♥', '5,5': '10♥', '5,6': '9♥', '5,7': '5♣', '5,8': 'K♣', '5,9': 'A♥',
-  '6,0': '8♦', '6,1': '10♦', '6,2': '2♥', '6,3': '3♥', '6,4': '4♥', '6,5': '5♥', '6,6': '8♥', '6,7': '4♣', '6,8': 'A♣', '6,9': 'K♥',
-  '7,0': '7♦', '7,1': 'Q♦', '7,2': '6♥', '7,3': 'A♦', '7,4': 'K♦', '7,5': 'Q♦', '7,6': '7♥', '7,7': '3♣', '7,8': '2♣', '7,9': 'Q♥',
-  '8,0': '6♦', '8,1': 'K♦', '8,2': '10♥', '8,3': '9♥', '8,4': '8♥', '8,5': '7♥', '8,6': '6♥', '8,7': '2♥', '8,8': '3♥', '8,9': '10♥',
-  '9,0': 'XX', '9,1': '2♦', '9,2': '3♦', '9,3': '4♦', '9,4': '5♦', '9,5': '6♦', '9,6': '7♦', '9,7': '8♦', '9,8': '9♦', '9,9': 'XX',
-};
+// --- FIREBASE SETUP ---
+let app, auth, db;
+let isOnlineAvailable = false;
+let isCustomConfig = false;
 
-// =========================================================================
-// ASSETS & HELPERS
-// =========================================================================
+const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'sequence-game-prod';
+const appId = rawAppId.replace(/[^a-zA-Z0-9_-]/g, '_'); 
 
-// Mendapatkan URL gambar kartu berdasarkan rank dan suit
+try {
+  if (YOUR_FIREBASE_CONFIG && YOUR_FIREBASE_CONFIG.projectId) {
+    const firebaseConfig = YOUR_FIREBASE_CONFIG;
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+    isOnlineAvailable = true;
+    isCustomConfig = true;
+  } 
+  else if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+    const firebaseConfig = JSON.parse(__firebase_config);
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+    isOnlineAvailable = true;
+    isCustomConfig = false;
+  }
+} catch (e) { console.error("Firebase Init Error:", e); }
+
+// --- DATA PAPAN ---
+const REAL_BOARD_PATTERN = [
+    ['XX', '6♦', '7♦', '8♦', '9♦', '10♦', 'Q♦', 'K♦', 'A♦', 'XX'],
+    ['5♦', '3♥', '2♥', '2♠', '3♠', '4♠', '5♠', '6♠', '7♠', 'A♣'],
+    ['4♦', '4♥', 'K♦', 'A♦', 'A♣', 'K♣', 'Q♣', '10♣', '8♠', 'K♣'],
+    ['3♦', '5♥', 'Q♦', 'Q♥', '10♥', '9♥', '8♥', '9♣', '9♠', 'Q♣'],
+    ['2♦', '6♥', '10♦', 'K♥', '3♥', '2♥', '7♥', '8♣', '10♠', '10♣'], 
+    ['A♠', '7♥', '9♦', 'A♥', '4♥', '5♥', '6♥', '7♣', 'Q♠', '9♣'],
+    ['Q♠', '8♥', '8♦', '2♣', '3♣', '4♣', '5♣', '6♣', 'K♠', '8♣'],
+    ['K♠', '9♥', '7♦', '6♦', '5♦', '4♦', '3♦', '2♦', 'A♠', '7♣'],
+    ['10♠', '10♥', 'Q♥', 'K♥', 'A♥', '2♣', '3♣', '4♣', '5♣', '6♣'],
+    ['XX', '9♠', '8♠', '7♠', '6♠', '5♠', '4♠', '3♠', '2♠', 'XX']
+];
+
+// --- ASSETS & HELPERS ---
 const getCardImageUrl = (rank, suit) => {
-  // Gunakan placeholder untuk kartu yang tidak ditemukan atau Jack (JS/JC sudah ditangani secara khusus)
-  if (rank === 'XX') return 'https://placehold.co/100x150/000/FFF?text=FREE'; 
-  return `https://deckofcardsapi.com/static/img/${rank}${suit[0].toLowerCase()}.png`;
+    if (rank === 'XX' || !rank || !suit) return null;
+    let sCode = suit === '♠' ? 'S' : suit === '♣' ? 'C' : suit === '♥' ? 'H' : 'D';
+    let rCode = rank === '10' ? '0' : rank;
+    return `https://deckofcardsapi.com/static/img/${rCode}${sCode}.png`;
 };
 
-// Fungsi untuk mendapatkan warna berdasarkan jenis (suit) kartu
-const getSuitColor = (suit) => {
-  if (suit === '♥' || suit === '♦') return 'text-red-600';
-  return 'text-gray-900';
-};
+const isTwoEyedJack = (r, s) => r === 'J' && (s === '♣' || s === '♦'); 
+const isOneEyedJack = (r, s) => r === 'J' && (s === '♠' || s === '♥'); 
+const getTeam = (pIdx) => pIdx % 2; 
 
-// Fungsi untuk mendapatkan nama kartu yang lebih mudah dibaca
-const getCardName = (cardCode) => {
-  const rank = cardCode.slice(0, -1);
-  const suit = cardCode.slice(-1);
-  let rankName;
-  switch (rank) {
-    case 'A': rankName = 'As'; break;
-    case 'K': rankName = 'King'; break;
-    case 'Q': rankName = 'Queen'; break;
-    case 'J': rankName = 'Jack'; break;
-    case '10': rankName = '10'; break;
-    case '9': rankName = '9'; break;
-    case '8': rankName = '8'; break;
-    case '7': rankName = '7'; break;
-    case '6': rankName = '6'; break;
-    case '5': rankName = '5'; break;
-    case '4': rankName = '4'; break;
-    case '3': rankName = '3'; break;
-    case '2': rankName = '2'; break;
-    default: return 'Sudut GRATIS';
-  }
-  let suitName;
-  switch (suit) {
-    case '♠': suitName = 'Sekop'; break;
-    case '♥': suitName = 'Hati'; break;
-    case '♦': suitName = 'Wajik'; break;
-    case '♣': suitName = 'Keriting'; break;
-    default: suitName = '';
-  }
-  return `${rankName} ${suitName}`;
-};
-
-// =========================================================================
-// KOMPONEN UTAMA
-// =========================================================================
-
-const SequenceGameInternal = () => {
-  // State Otentikasi & Koneksi
-  const [userId, setUserId] = useState(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [authError, setAuthError] = useState(null);
-
-  // State Game
-  const [screen, setScreen] = useState('menu'); // 'menu', 'lobby', 'game'
-  const [roomId, setRoomId] = useState('');
-  const [nickname, setNickname] = useState('');
-  const [roomData, setRoomData] = useState(null);
-  const [hand, setHand] = useState([]); // Kartu di tangan pemain
-  const [currentTurn, setCurrentTurn] = useState(null);
-  const [gameStatus, setGameStatus] = useState('pending'); // 'pending', 'started', 'finished'
-  const [boardState, setBoardState] = useState({}); // { 'row,col': 'playerId' }
-
-  // State Interaksi
-  const [selectedCardIndex, setSelectedCardIndex] = useState(null);
-  const [message, setMessage] = useState('');
-  const [isError, setIsError] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSoundMuted, setIsSoundMuted] = useState(false);
-
-  // Constants
-  const APP_ID = 'sequence-game-ultimate';
-  const COLLECTION_NAME = 'rooms';
-
-  // --- 1. OTENTIKASI DAN INISIALISASI FIREBASE ---
-  useEffect(() => {
-    if (!firebaseInitialized || !auth) {
-      setIsLoading(false);
-      return;
-    }
-
-    const initializeUser = async () => {
-      try {
-        // Coba masuk dengan token khusus jika tersedia (lingkungan Canvas)
-        const initialToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        let user;
-
-        if (initialToken) {
-          const userCredential = await signInWithCustomToken(auth, initialToken);
-          user = userCredential.user;
-        } else {
-          // Jika tidak, masuk secara anonim
-          const userCredential = await signInAnonymously(auth);
-          user = userCredential.user;
-        }
-
-        if (user) {
-          setUserId(user.uid);
-          // Coba muat nickname dari penyimpanan lokal jika ada
-          const savedNickname = localStorage.getItem('sequenceNickname');
-          setNickname(savedNickname || `Pemain-${user.uid.substring(0, 4)}`);
-        }
-        setIsAuthReady(true);
-        setIsLoading(false);
-
-      } catch (error) {
-        console.error("Gagal melakukan otentikasi Firebase:", error);
-        setAuthError("Gagal terhubung ke server. Coba muat ulang.");
-        setIsLoading(false);
-        setIsAuthReady(true); // Tetapkan siap meskipun gagal agar UI muncul
-      }
-    };
-
-    initializeUser();
-
-    // Listener untuk perubahan status otentikasi
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      if (user && user.uid !== userId) {
-        setUserId(user.uid);
-      }
-    });
-
-    return () => {
-      if (unsubscribeAuth) unsubscribeAuth();
-    };
-  }, []);
-
-  // Simpan nickname ke penyimpanan lokal saat berubah
-  useEffect(() => {
-    if (nickname && userId) {
-      localStorage.setItem('sequenceNickname', nickname);
-    }
-  }, [nickname, userId]);
-
-  // --- 2. LISTENER DATA RUANGAN ---
-  useEffect(() => {
-    if (!db || !userId || screen !== 'lobby' || !roomId) return;
-
-    // Path ke dokumen ruangan
-    const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME, roomId);
-
-    const unsubscribe = onSnapshot(roomRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setRoomData(data);
-        setBoardState(data.boardState || {});
-        setHand(data.playerHands?.[userId] || []);
-        setCurrentTurn(data.currentTurn);
-        setGameStatus(data.status);
-      } else {
-        // Jika dokumen dihapus (ruangan ditutup)
-        setRoomData(null);
-        setRoomId('');
-        setScreen('menu');
-        showMessage('Ruangan ditutup oleh host.', false);
-      }
-    }, (error) => {
-      console.error("Kesalahan mendengarkan data ruangan:", error);
-      showMessage("Kesalahan koneksi data. Silakan coba lagi.", true);
-    });
-
-    return () => unsubscribe();
-  }, [db, userId, screen, roomId]);
-
-
-  // --- 3. FUNGSI UTAMA GAME ---
-
-  // Deck kartu yang unik (52 kartu x 2, tanpa Jack)
-  const allCards = useMemo(() => {
-    const ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-    const suits = ['♠', '♥', '♦', '♣'];
+const createDeck = () => {
     let deck = [];
-    for (let i = 0; i < 2; i++) {
-      for (const suit of suits) {
-        for (const rank of ranks) {
-          if (rank !== 'J') { // Tidak memasukkan Jack di deck normal
-            deck.push(`${rank}${suit}`);
-          }
-        }
-      }
+    for (let i = 0; i < 2; i++) { 
+        SUITS.forEach(suit => {
+            RANKS.forEach(rank => deck.push({ suit, rank, id: `${i}-${rank}${suit}` }));
+            deck.push({ suit, rank: 'J', id: `${i}-J${suit}` });
+        });
     }
-    // Tambahkan 4 Jack (2 mata 1 dan 2 mata 2)
-    deck.push('JS', 'JS', 'JC', 'JC');
+    for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]]; 
+    }
     return deck;
-  }, []);
+};
+
+const formatTime = (seconds) => {
+    if (isNaN(seconds)) return "0:00";
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
+
+const generateNumericId = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+const getRoomRef = (roomIdStr) => {
+    if (isCustomConfig) return doc(db, 'rooms', roomIdStr);
+    return doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomIdStr);
+};
+
+// --- UTILITY UNTUK LOGIKA GAME (DIPINDAHKAN KELUAR KOMPONEN AGAR DAPAT DIAKSES OLEH BOT) ---
+const checkNeighbors = (boardState, r, c, team) => {
+    const dirs = [[0,1], [1,0], [1,1], [1,-1]]; let maxSeq = 0;
+    for(let d of dirs) {
+        let count = 0; 
+        [1, -1].forEach(mult => { 
+            for(let k=1; k<5; k++) { 
+                const nr=r+(k*d[0]*mult), nc=c+(k*d[1]*mult); 
+                if(nr>=0 && nr<10 && nc>=0 && nc<10 && boardState[nr][nc]) { 
+                    const cell = boardState[nr][nc]; 
+                    if(cell.type === 'corner' || (cell.chip !== null && getTeam(cell.chip) === team)) count++; 
+                    else break; 
+                } else break; 
+            } 
+        });
+        if(count > maxSeq) maxSeq = count;
+    } 
+    return maxSeq;
+};
+// --- END UTILITY ---
 
 
-  // Shuffle deck
-  const shuffleDeck = useCallback((deck) => {
-    let shuffled = [...deck];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+// --- KOMPONEN VISUAL ---
+const CardFallback = ({ rank, suit }) => (
+    <div className="w-full h-full bg-[#f1f5f9] flex flex-col items-center justify-center border border-slate-300 rounded-md select-none relative shadow-sm">
+        <span className={`text-[10px] sm:text-xs font-black ${['♥','♦'].includes(suit)?'text-red-600':'text-slate-900'}`}>{rank}</span>
+        <span className="text-xs sm:text-sm">{suit}</span>
+    </div>
+);
+
+const DealingOverlay = ({ onComplete }) => {
+    useEffect(() => {
+        const timer = setTimeout(onComplete, 3000);
+        return () => clearTimeout(timer);
+    }, [onComplete]);
+
+    return (
+        <div className="absolute inset-0 z-[999] bg-[#050505]/90 backdrop-blur-md flex flex-col items-center justify-center select-none pointer-events-none">
+            <div className="relative w-32 h-48">
+                 {[...Array(5)].map((_, i) => (
+                    <img 
+                        key={i}
+                        src={CARD_BACK_URL} 
+                        className="absolute top-0 left-0 w-full h-full rounded-xl shadow-2xl border border-white/10"
+                        style={{ 
+                            animation: `dealCard 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) ${i * 0.15}s forwards`,
+                            transform: `translateY(-${i * 2}px) translateX(-${i * 2}px)`
+                        }}
+                        alt=""
+                    />
+                 ))}
+            </div>
+            <h2 className="mt-16 text-2xl font-black text-amber-500 tracking-[0.5em] animate-pulse">MEMBAGI KARTU</h2>
+        </div>
+    );
+};
+
+const OpponentPlayedCard = ({ card }) => {
+    if (!card) return null;
+    const imgUrl = getCardImageUrl(card.rank, card.suit);
+    return (
+        <div className="absolute top-[25%] right-[10%] z-[100] pointer-events-none" style={{ perspective: '1000px' }}>
+            <div className="w-24 sm:w-32 aspect-[2/3] bg-white rounded-xl shadow-[0_0_30px_rgba(0,0,0,0.5)] border-2 border-amber-400 origin-center animate-opponent-play">
+                 <img src={imgUrl} className="w-full h-full object-contain p-1" alt="" />
+                 <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-4 py-1 rounded-full text-[10px] font-black tracking-widest whitespace-nowrap border border-white/20 shadow-lg">
+                    LAWAN
+                 </div>
+            </div>
+        </div>
+    );
+};
+
+const ChipContent = React.memo(({ rank, suit, isWild, locked }) => {
+    if (isWild) {
+        return <Crown size={14} className="text-amber-200 drop-shadow-sm" />;
     }
-    return shuffled;
-  }, []);
+    if (!rank || !suit) return null;
+    const isRed = ['♥', '♦'].includes(suit);
+    return (
+        <div className={`flex flex-col items-center justify-center leading-none ${isRed ? 'text-red-100' : 'text-blue-100'}`}>
+            <span className="text-[10px] font-black">{rank}</span>
+            <span className="text-[10px]">{suit}</span>
+            {locked && <Lock size={8} className="text-white/90 drop-shadow-md absolute -top-1 -right-1" />}
+        </div>
+    );
+});
 
-  // Menangani pesan dan notifikasi
-  const showMessage = (msg, isErr = false) => {
-    setMessage(msg);
-    setIsError(isErr);
-    setTimeout(() => setMessage(''), 5000);
-  };
+// --- KOMPONEN CHAT ---
+const EmojiPicker = ({ onSelect }) => (
+    <div className="absolute bottom-12 right-0 w-48 bg-zinc-800/95 backdrop-blur-sm border border-white/10 p-2 rounded-xl shadow-xl z-50 animate-drop-in">
+        <div className="grid grid-cols-5 gap-1">
+            {EMOJIS.map((emoji, i) => (
+                <button 
+                    key={i} 
+                    onClick={() => onSelect(emoji)} 
+                    className="text-lg p-1 rounded-lg hover:bg-zinc-700 transition-colors"
+                >
+                    {emoji}
+                </button>
+            ))}
+        </div>
+    </div>
+);
 
-  // Membuat ruangan baru
-  const createRoom = async () => {
-    if (!db || !userId) return showMessage("Otentikasi belum siap.", true);
-    setIsLoading(true);
+const ChatOverlay = ({ isOpen, onClose, chats, onSend, myName }) => {
+    const [text, setText] = useState("");
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const messagesEndRef = useRef(null);
+    
+    useEffect(() => {
+        if(isOpen && messagesEndRef.current) messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }, [chats, isOpen]);
 
-    try {
-      // Hasilkan ID ruangan 6 karakter acak
-      const newRoomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+    if (!isOpen) return null;
 
-      const initialRoomData = {
-        id: newRoomId,
-        hostId: userId,
-        status: 'pending', // 'pending', 'started', 'finished'
-        players: [{ id: userId, nickname: nickname, team: 1, isReady: false }],
-        playerHands: {}, // Akan diisi saat game dimulai
-        boardState: {}, // { 'row,col': { playerId: 'uid', team: 1, card: 'A♠' } }
-        currentTurn: userId,
-        sequenceGoal: 5, // Target 5 kartu berurutan
-        deck: [], // Deck kartu akan diisi saat start
-        teams: { 1: { color: 'blue', score: 0 }, 2: { color: 'red', score: 0 } },
-        createdAt: new Date().toISOString(),
-      };
-
-      const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME, newRoomId);
-      await setDoc(roomRef, initialRoomData);
-
-      setRoomId(newRoomId);
-      setScreen('lobby');
-      showMessage(`Ruangan ${newRoomId} berhasil dibuat! Bagikan kode ini.`, false);
-
-    } catch (error) {
-      console.error("Gagal membuat ruangan:", error);
-      showMessage("Gagal membuat ruangan. Silakan coba lagi.", true);
-    } finally {
-      setIsLoading(false);
+    const handleSelectEmoji = (emoji) => {
+        setText(prev => prev + emoji);
+        setShowEmojiPicker(false);
+    };
+    
+    const handleSend = () => {
+        if(text.trim()) { 
+            onSend(text); 
+            setText("");
+            setShowEmojiPicker(false);
+        }
     }
-  };
 
-  // Gabung ke ruangan
-  const joinRoom = async () => {
-    if (!db || !userId || !roomId) return showMessage("Masukkan kode ruangan.", true);
-    setIsLoading(true);
+    return (
+        <div className="absolute bottom-24 right-4 z-[90] w-72 h-80 bg-[#1e293b]/95 backdrop-blur-md border border-white/10 rounded-2xl flex flex-col shadow-2xl animate-drop-in origin-bottom-right">
+            <div className="p-3 border-b border-white/5 flex justify-between items-center bg-black/20 rounded-t-2xl">
+                <span className="text-xs font-bold text-amber-500 flex items-center gap-2"><MessageCircle size={14}/> LIVE CHAT</span>
+                <button onClick={onClose}><X size={16} className="text-zinc-500 hover:text-white"/></button>
+            </div>
+            <div className="flex-grow overflow-y-auto p-3 space-y-2 scrollbar-hide">
+                {chats.length === 0 && <p className="text-[10px] text-zinc-500 text-center italic mt-10">Belum ada pesan. Mulai ejekan!</p>}
+                {chats.map((c, i) => (
+                    <div key={i} className={`flex flex-col ${c.senderName === myName ? 'items-end' : 'items-start'}`}>
+                        <div className={`max-w-[85%] px-3 py-2 rounded-xl text-[10px] font-bold ${c.senderName === 'SYSTEM' ? 'bg-zinc-700 text-zinc-300 w-full text-center' : (c.senderName === myName ? 'bg-amber-600 text-white rounded-br-none' : 'bg-slate-700 text-white rounded-bl-none')}`}>
+                            {c.senderName !== myName && c.senderName !== 'SYSTEM' && <span className="block text-[8px] text-zinc-400 mb-[1px]">{c.senderName}</span>}
+                            {c.text}
+                        </div>
+                    </div>
+                ))}
+                <div ref={messagesEndRef} />
+            </div>
+            <div className="p-2 border-t border-white/5 flex gap-2 relative">
+                <button 
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)} 
+                    className="bg-zinc-700 hover:bg-zinc-600 text-white p-2 rounded-lg"
+                >
+                    <Smile size={14} />
+                </button>
+                {showEmojiPicker && <EmojiPicker onSelect={handleSelectEmoji} />}
 
-    try {
-      const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME, roomId.toUpperCase());
-      const docSnap = await getDoc(roomRef);
+                <input 
+                    value={text} 
+                    onChange={e=>setText(e.target.value)}
+                    onKeyDown={e => {if(e.key === 'Enter' && text.trim()) { handleSend(); }}}
+                    className="flex-grow bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                    placeholder="Ketik pesan..."
+                />
+                <button onClick={handleSend} className="bg-amber-600 hover:bg-amber-500 text-white p-2 rounded-lg"><Send size={14}/></button>
+            </div>
+        </div>
+    );
+};
 
-      if (docSnap.exists() && docSnap.data().status === 'pending') {
-        const data = docSnap.data();
+const BoardCell = React.memo(({ cell, isHighlight, isTarget, isLast, lastMoveType, isOccupiedError, animatingOut, onClick, isWinningChip }) => {
+    const [imgError, setImgError] = useState(false);
+    const imgUrl = useMemo(() => getCardImageUrl(cell.rank, cell.suit), [cell.rank, cell.suit]);
+    
+    if (cell.type === 'corner') {
+        return (
+            <div className="relative w-full h-full border-[0.5px] border-white/5 overflow-hidden bg-[#0a0a0a] flex items-center justify-center group shadow-inner">
+                <div className="absolute inset-0 bg-[radial-gradient(circle,_rgba(245,158,11,0.1)_1px,transparent_1px)] bg-[length:4px_4px] opacity-30"></div>
+                <Crown size={14} className="text-amber-500/60 drop-shadow-[0_0_8px_rgba(245,158,11,0.4)]"/>
+            </div>
+        );
+    }
+    
+    const isDropping = isLast && lastMoveType === 'wild' && !animatingOut;
+    // Locked chips visualnya ada ring kecil
+    const lockedVisual = cell.locked ? "ring-2 ring-black/80" : "hover:brightness-110"; 
 
-        if (data.players.find(p => p.id === userId)) {
-          // Sudah ada di ruangan, langsung masuk
-          setRoomData(data);
-          setScreen('lobby');
-          showMessage(`Selamat datang kembali di ruangan ${roomId.toUpperCase()}.`);
-          return;
-        }
-        
-        // Cek batasan 4 pemain
-        if (data.players.length >= 4) {
-             showMessage("Ruangan penuh (max 4 pemain).", true);
-             return;
-        }
+    return (
+        <div 
+            onClick={() => onClick(cell.r, cell.c)}
+            className={`relative flex items-center justify-center overflow-hidden cursor-pointer select-none transition-all duration-300 bg-[#e2e8f0] shadow-sm
+                ${isTarget ? 'ring-[3px] ring-yellow-400 z-30 scale-[1.02] shadow-[0_0_20px_rgba(250,204,21,0.8)] animate-pulse brightness-110' : ''}
+                ${isHighlight ? 'ring-[3px] ring-emerald-400 z-30 shadow-[0_0_15px_rgba(16,185,129,0.5)] brightness-105' : ''} 
+                ${lockedVisual}
+                border-[0.5px] border-slate-400/20
+            `}
+            style={{ aspectRatio: '1/1' }}
+        >
+            {imgError ? <CardFallback rank={cell.rank} suit={cell.suit} /> :
+            <img src={imgUrl} onError={() => setImgError(true)} className="w-full h-full object-contain p-[1px] pointer-events-none" loading="lazy" alt="" />}
+            
+            {isTarget && <div className="absolute inset-0 bg-yellow-500/20 flex items-center justify-center z-20"><AlertOctagon className="text-yellow-600 w-5 h-5 drop-shadow-md animate-bounce"/></div>}
+            
+            {isOccupiedError && (
+                <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50 animate-pulse">
+                    <Ban className="text-rose-500 w-8 h-8 drop-shadow-[0_0_10px_rgba(244,63,94,0.8)]"/>
+                </div>
+            )}
+            
+            {cell.chip !== null && (
+                <div className={`absolute w-[80%] h-[80%] rounded-full z-20 flex items-center justify-center shadow-[0_4px_6px_rgba(0,0,0,0.7)] border-[2px] transition-all duration-500 cubic-bezier(0.34, 1.56, 0.64, 1)
+                    ${getTeam(cell.chip) === 0 
+                        ? 'bg-gradient-to-br from-blue-600 to-blue-900 border-blue-400/80 shadow-blue-900/50' 
+                        : 'bg-gradient-to-br from-rose-600 to-rose-900 border-rose-400/80 shadow-rose-900/50'}
+                    ${isLast && !isDropping && !animatingOut ? 'scale-110 ring-2 ring-amber-300 ring-offset-1 ring-offset-black' : ''}
+                    ${isDropping ? 'animate-drop-in' : ''}
+                    ${animatingOut ? 'animate-chip-out opacity-0' : ''}
+                `}>
+                    <div className="w-[85%] h-[85%] rounded-full border border-white/20 bg-black/20 flex items-center justify-center backdrop-blur-sm relative">
+                        <ChipContent rank={cell.chipRank} suit={cell.chipSuit} isWild={cell.isWild} locked={cell.locked} />
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}, (prev, next) => prev.cell === next.cell && prev.isHighlight === next.isHighlight && prev.isTarget === next.isTarget && prev.isLast === next.isLast && prev.lastMoveType === next.lastMoveType && prev.isOccupiedError === next.isOccupiedError && prev.animatingOut === next.animatingOut && prev.isWinningChip === next.isWinningChip);
 
-        // Tentukan tim (tim dengan pemain paling sedikit)
-        const teamCounts = data.players.reduce((acc, player) => {
-            acc[player.team] = (acc[player.team] || 0) + 1;
-            return acc;
-        }, {});
+const HandCard = React.memo(({ card, selected, disabled, onClick }) => {
+    if (!card) return <div className="w-14 sm:w-16 lg:w-20 aspect-[2/3] flex-shrink-0 opacity-0"></div>;
+    const imgUrl = getCardImageUrl(card.rank, card.suit);
+    let label = null, labelColor = '';
+    if (card.rank === 'J') {
+        if (isTwoEyedJack(card.rank, card.suit)) { label = "WILD"; labelColor = "bg-emerald-600"; } 
+        else { label = "BUANG"; labelColor = "bg-rose-600"; }
+    }
+    return (
+        <div onClick={onClick} className={`relative w-14 sm:w-16 lg:w-24 aspect-[2/3] flex-shrink-0 bg-white rounded-lg shadow-lg border border-slate-200 cursor-pointer transition-all select-none duration-200 transform will-change-transform
+            ${selected ? '-translate-y-6 ring-2 ring-amber-400 z-30 shadow-[0_0_25px_rgba(251,191,36,0.5)] scale-110' : ''} 
+            ${disabled ? 'opacity-50 grayscale brightness-90 cursor-not-allowed' : 'hover:-translate-y-3 hover:shadow-xl hover:brightness-105'}
+        `}>
+            <img src={imgUrl} onError={(e)=>e.target.src=''} className="w-full h-full object-contain p-1 rounded-lg" loading="lazy" alt="" />
+            {label && <div className={`absolute -top-2 left-1/2 -translate-x-1/2 px-2 py-[2px] text-[7px] font-black text-white tracking-wider text-center rounded-full ${labelColor} shadow-md whitespace-nowrap z-10 border border-white/50`}>{label}</div>}
+        </div>
+    );
+});
 
-        const newTeam = (teamCounts[1] || 0) <= (teamCounts[2] || 0) ? 1 : 2;
+const LogoFourCards = () => (
+    <div className="flex justify-center -space-x-4 mb-4 scale-110">
+        <div className="w-10 h-14 bg-white rounded border border-slate-300 shadow-lg rotate-[-15deg] flex items-center justify-center text-xl text-black">♠</div>
+        <div className="w-10 h-14 bg-white rounded border border-slate-300 shadow-lg rotate-[-5deg] flex items-center justify-center text-xl text-red-600">♥</div>
+        <div className="w-10 h-14 bg-white rounded border border-slate-300 shadow-lg rotate-[5deg] flex items-center justify-center text-xl text-black">♣</div>
+        <div className="w-10 h-14 bg-white rounded border border-slate-300 shadow-lg rotate-[15deg] flex items-center justify-center text-xl text-red-600">♦</div>
+    </div>
+);
 
-        const newPlayer = { id: userId, nickname: nickname, team: newTeam, isReady: false };
-        await updateDoc(roomRef, {
-          players: arrayUnion(newPlayer)
+// --- LOGIKA UTAMA GAME ---
+function SequenceGameInternal() {
+    const [user, setUser] = useState(null);
+    const [appMode, setAppMode] = useState('menu'); 
+    const [botLevel, setBotLevel] = useState('easy'); 
+    const [roomId, setRoomId] = useState(null);
+    const [playerIndex, setPlayerIndex] = useState(null);
+    const [maxPlayers, setMaxPlayers] = useState(2);
+    const [board, setBoard] = useState([]);
+    const [deck, setDeck] = useState([]);
+    const [hands, setHands] = useState({0:[], 1:[], 2:[], 3:[]});
+    const [turn, setTurn] = useState(0);
+    const [winner, setWinner] = useState(null);
+    const [showGameOverModal, setShowGameOverModal] = useState(false);
+    const [showForfeitModal, setShowForfeitModal] = useState(false); 
+    const [lastMove, setLastMove] = useState(null);
+    const [chats, setChats] = useState([]);
+    const [showChat, setShowChat] = useState(false);
+    const [toast, setToast] = useState(null);
+    const [timeLeft, setTimeLeft] = useState(TURN_DURATION);
+    const [soundMode, setSoundMode] = useState('sound'); 
+    const [selectedCardIdx, setSelectedCardIdx] = useState(null);
+    const [message, setMessage] = useState("");
+    const [scores, setScores] = useState({0:0, 1:0});
+    const [winningLines, setWinningLines] = useState([]); 
+    const [scoredIds, setScoredIds] = new useState(new Set()); 
+    const [playerName, setPlayerName] = useState("Player 1");
+    const [playerNamesList, setPlayerNamesList] = useState({});
+    const [loadingText, setLoadingText] = useState("");
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [errorCell, setErrorCell] = useState(null); 
+    const [roomDetails, setRoomDetails] = useState(null); 
+    const [joinCodeInput, setJoinCodeInput] = useState(''); 
+    const [isDealing, setIsDealing] = useState(false);
+    const [visualPlayedCard, setVisualPlayedCard] = useState(null);
+    
+    const [showGuideModal, setShowGuideModal] = useState(false);
+    const [showBotSelectModal, setShowBotSelectModal] = useState(false);
+    const [animatingOutCells, setAnimatingOutCells] = new useState(new Set()); 
+
+    const audioCtxRef = useRef(null);
+
+    // --- STYLE INJECTION ---
+    useEffect(() => {
+        const style = document.createElement('style');
+        style.innerHTML = `
+            @keyframes chipOut { 
+                0% { transform: scale(1) rotate(0deg); opacity: 1; } 
+                30% { transform: scale(1.2) rotate(10deg); opacity: 0.8; }
+                100% { transform: scale(0.5) translateY(-50px) rotate(-90deg); opacity: 0; } 
+            }
+            .animate-chip-out { animation: chipOut 1.5s ease-out forwards; }
+            @keyframes dropIn { 0% { transform: translateY(-300%) scale(1.5); opacity: 0; } 60% { transform: translateY(10%) scale(1); opacity: 1; } 80% { transform: translateY(-5%); } 100% { transform: translateY(0); } }
+            .animate-drop-in { animation: dropIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); }
+            @keyframes dealCard { 0% { transform: translate(0,0) scale(0.1); opacity: 0; } 50% { transform: translate(0,0) scale(1.2); opacity: 1; } 100% { transform: translate(var(--tx), var(--ty)) scale(1); opacity: 0; } }
+            @keyframes opponentSidePlay { 0% { transform: scale(0.5) translateY(50px); opacity: 0; } 20% { transform: scale(1.2) translateY(0); opacity: 1; } 80% { transform: scale(1) translateY(0); opacity: 1; } 100% { transform: scale(0.8) translateY(-50px); opacity: 0; } }
+            .animate-opponent-play { animation: opponentSidePlay 2.5s ease-in-out forwards; }
+            .scrollbar-hide::-webkit-scrollbar { display: none; }
+            .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+            .text-gradient-gold { background: linear-gradient(to bottom, #fcd34d, #d97706); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+            .bg-felt-pattern { background-color: #0f172a; background-image: radial-gradient(#1e293b 1px, transparent 1px); background-size: 20px 20px; }
+            .confetti { position: absolute; width: 10px; height: 10px; background-color: #f00; animation: confetti-fall 3s linear infinite; pointer-events: none; } /* PERBAIKAN: Menambahkan pointer-events: none; */
+            @keyframes confetti-fall { 0% { transform: translateY(-10vh) rotate(0deg); } 100% { transform: translateY(110vh) rotate(720deg); } }
+            
+            /* SVG Lines Style - More visible and on top */
+            .winning-line { 
+                stroke-dasharray: 200; 
+                stroke-dashoffset: 200; 
+                animation: drawLine 1s cubic-bezier(0.4, 0, 0.2, 1) forwards; 
+                filter: drop-shadow(0 0 8px rgba(0,0,0,0.8)); /* Drop shadow lebih kuat */
+                z-index: 50;
+            }
+            @keyframes drawLine { to { stroke-dashoffset: 0; } }
+        `;
+        document.head.appendChild(style);
+        return () => { if(document.head.contains(style)) document.head.removeChild(style); };
+    }, []);
+
+    // --- AUTH ---
+    useEffect(() => {
+        const init = async () => {
+            if (isOnlineAvailable && auth) {
+                try { 
+                    if (isCustomConfig) await signInAnonymously(auth);
+                    else if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token); 
+                    else await signInAnonymously(auth); 
+                } catch (e) { console.error("Auth Sign-In Error (Initial):", e); }
+            } else {
+                 setUser({uid: 'offline-user', isAnonymous: true});
+            }
+        }; 
+        init();
+        if (isOnlineAvailable && auth) {
+             const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
+             return () => unsub();
+        } 
+    }, []);
+
+    const playEffect = useCallback((type) => {
+        if (soundMode === 'silent') return;
+        if (soundMode === 'vibrate') { if (navigator.vibrate) navigator.vibrate(50); return; }
+        try {
+            if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+            const ctx = audioCtxRef.current; const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.connect(gain); gain.connect(ctx.destination); const now = ctx.currentTime;
+            if (type === 'win') { osc.type = 'triangle'; osc.frequency.setValueAtTime(523.25, now); osc.frequency.linearRampToValueAtTime(783.99, now + 0.2); gain.gain.setValueAtTime(0.2, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 1); osc.start(now); osc.stop(now + 1); }
+            else if (type === 'move') { osc.type = 'sine'; osc.frequency.setValueAtTime(400, now); osc.frequency.exponentialRampToValueAtTime(600, now + 0.1); gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2); osc.start(now); osc.stop(now + 0.2); }
+            else if (type === 'punch') { osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, now); osc.frequency.linearRampToValueAtTime(50, now + 0.8); gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8); osc.start(now); osc.stop(now + 0.8); }
+            else if (type === 'wild') { osc.type = 'sine'; osc.frequency.setValueAtTime(800, now); osc.frequency.linearRampToValueAtTime(1200, now + 0.1); gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5); osc.start(now); osc.stop(now + 0.5); }
+            else if (type === 'error') { osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now); osc.frequency.exponentialRampToValueAtTime(50, now + 0.2); gain.gain.setValueAtTime(0.2, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2); osc.start(now); osc.stop(now + 0.2); }
+        } catch (e) {}
+    }, [soundMode]);
+
+    // --- DEAD CARD Logic ---
+    useEffect(() => {
+        if (!board.length || winner !== null || isDealing) return;
+        const isMyTurn = (appMode === 'offline-bot' && turn === 0) || (appMode === 'online-game' && turn === playerIndex);
+        if (!isMyTurn) return;
+
+        const myHand = hands[turn] || [];
+        const deadCardIndices = [];
+
+        myHand.forEach((card, idx) => {
+            if (card.rank === 'J') return;
+            let isDead = true;
+            for(let r=0; r<10; r++) for(let c=0; c<10; c++) {
+                const cell = board[r][c];
+                // KARTU MATI: Hanya jika SEMUA posisi kartu di papan sudah terisi chip (chip !== null)
+                if (cell.rank === card.rank && cell.suit === card.suit && cell.chip === null) { isDead = false; break; }
+            }
+            if (isDead) deadCardIndices.push(idx);
         });
 
-        setScreen('lobby');
-        showMessage(`Berhasil bergabung ke ruangan ${roomId.toUpperCase()}.`);
-      } else if (docSnap.exists() && docSnap.data().status !== 'pending') {
-        showMessage("Game sudah dimulai. Tidak bisa bergabung.", true);
-      } else {
-        showMessage("Kode ruangan tidak valid atau ruangan tidak ditemukan.", true);
-      }
+        if (deadCardIndices.length > 0) {
+            playEffect('punch');
+            const newHand = [...myHand]; const newDeck = [...deck];
+            for (let i = deadCardIndices.length - 1; i >= 0; i--) {
+                newHand.splice(deadCardIndices[i], 1);
+                if (newDeck.length > 0) newHand.push(newDeck.shift());
+            }
+            setHands(prev => ({...prev, [turn]: newHand})); setDeck(newDeck);
+            if (appMode === 'online-game') updateDoc(getRoomRef(roomId), { hands: JSON.stringify({...hands, [turn]: newHand}), deck: JSON.stringify(newDeck) }).catch(console.error);
+        }
+    }, [turn, board, hands, deck, winner, isDealing, appMode, playerIndex, roomId, playEffect]);
 
-    } catch (error) {
-      console.error("Gagal bergabung ke ruangan:", error);
-      showMessage("Gagal bergabung ke ruangan. Silakan coba lagi.", true);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    // --- GAME OVER DELAY EFFECT ---
+    useEffect(() => {
+        if (winner !== null && !showGameOverModal) {
+            // Jeda 3 detik agar pemain bisa melihat papan dan garis kemenangan
+            const timer = setTimeout(() => {
+                setShowGameOverModal(true);
+            }, 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [winner, showGameOverModal]);
 
-  // Memulai game
-  const startGame = async () => {
-    if (!roomData || !db || roomData.hostId !== userId) return showMessage("Anda bukan host ruangan.", true);
-    if (roomData.players.length < 2) return showMessage("Minimal 2 pemain untuk memulai.", true);
-    if (roomData.players.length > 4) return showMessage("Maksimal 4 pemain untuk saat ini.", true);
-    if (roomData.players.some(p => !p.isReady)) return showMessage("Semua pemain harus siap ('Ready') terlebih dahulu.", true);
-
-    setIsLoading(true);
-    try {
-      const shuffledDeck = shuffleDeck(allCards);
-      const hands = {};
-      const numPlayers = roomData.players.length;
-      let handSize;
-      if (numPlayers === 2) handSize = 7;
-      else if (numPlayers === 3) handSize = 6;
-      else if (numPlayers === 4) handSize = 5;
-
-      let deckIndex = 0;
-      for (const player of roomData.players) {
-        hands[player.id] = shuffledDeck.slice(deckIndex, deckIndex + handSize);
-        deckIndex += handSize;
-      }
-
-      const remainingDeck = shuffledDeck.slice(deckIndex);
-      
-      // Urutkan pemain berdasarkan urutan ID untuk menentukan giliran pertama
-      const turnOrder = roomData.players.map(p => p.id).sort();
-
-      const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME, roomId);
-      await updateDoc(roomRef, {
-        status: 'started',
-        deck: remainingDeck,
-        playerHands: hands,
-        currentTurn: turnOrder[0],
-        turnOrder: turnOrder,
-        boardState: {}, // Bersihkan papan
-        teams: { 1: { color: 'blue', score: 0 }, 2: { color: 'red', score: 0 } },
-        log: arrayUnion({ type: 'START', timestamp: new Date().toISOString() })
-      });
-
-      setScreen('game');
-      showMessage("Game dimulai!", false);
-    } catch (error) {
-      console.error("Gagal memulai game:", error);
-      showMessage("Gagal memulai game.", true);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Mengirim aksi Ready/Unready
-  const toggleReady = async () => {
-    if (!roomData || !db || !userId) return;
-    try {
-        const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME, roomId);
-        const currentPlayer = roomData.players.find(p => p.id === userId);
-        if (!currentPlayer) return;
-
-        const updatedPlayers = roomData.players.map(p =>
-            p.id === userId ? { ...p, isReady: !p.isReady } : p
-        );
-
-        await updateDoc(roomRef, { players: updatedPlayers });
-
-    } catch (error) {
-        console.error("Gagal mengubah status Ready:", error);
-        showMessage("Gagal mengubah status Ready.", true);
-    }
-  };
-  
-  // Menghapus ruangan (hanya host)
-  const deleteRoom = async () => {
-    if (!roomData || roomData.hostId !== userId) return showMessage("Hanya host yang bisa menghapus ruangan.", true);
-    if (!window.confirm("Apakah Anda yakin ingin menghapus ruangan ini?")) return;
-
-    try {
-      const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME, roomId);
-      await setDoc(roomRef, { status: 'closed' }, { merge: true }); // Tandai sebagai ditutup
-
-      // Sebagai ganti deleteDoc, kita set status closed (untuk listener)
-      // await deleteDoc(roomRef);
-
-      setRoomId('');
-      setRoomData(null);
-      setScreen('menu');
-      showMessage("Ruangan berhasil dihapus.", false);
-    } catch (error) {
-      console.error("Gagal menghapus ruangan:", error);
-      showMessage("Gagal menghapus ruangan.", true);
-    }
-  };
-
-  // Mengambil giliran berikutnya
-  const getNextTurnId = useCallback((turnOrder, currentTurnId) => {
-    if (!turnOrder || turnOrder.length === 0) return null;
-    const currentIndex = turnOrder.findIndex(id => id === currentTurnId);
-    if (currentIndex === -1) return turnOrder[0]; // Mulai dari awal jika tidak ditemukan
+    useEffect(() => { if (!winner && (appMode === 'online-game' || appMode === 'offline-bot')) { const timer = setInterval(() => setTimeLeft(p => p > 0 ? p - 1 : 0), 1000); return () => clearInterval(timer); } }, [turn, winner, appMode]);
     
-    const nextIndex = (currentIndex + 1) % turnOrder.length;
-    return turnOrder[nextIndex];
-  }, []);
+    useEffect(() => {
+        if (!winner && timeLeft <= 0) {
+            if (appMode === 'offline-bot') { setWinner(1); setMessage("Waktu Habis! Anda Kalah."); } 
+            else if (appMode === 'online-game' && turn === playerIndex) { const opponentTeam = getTeam(turn) === 0 ? 1 : 0; updateDoc(getRoomRef(roomId), { winner: opponentTeam, chats: arrayUnion({ senderName: "WASIT", text: "Waktu habis! Giliran hangus.", senderIndex: -1 }) }).catch(console.error); }
+        }
+    }, [timeLeft, winner, appMode, turn, playerIndex, roomId]);
 
-  // Memeriksa Sequence (5 kartu berurutan)
-  const checkSequence = useCallback((newBoardState, team, lastPosition) => {
-    if (!lastPosition) return false;
-    const [r, c] = lastPosition.split(',').map(Number);
-    const boardSize = 10;
-    const sequenceGoal = 5;
+    // --- SYNC ---
+    useEffect(() => {
+        if (appMode !== 'online-game' && appMode !== 'online-share' || !roomId || !user) return;
+        const unsub = onSnapshot(getRoomRef(roomId), (snap) => {
+            if (snap.exists()) {
+                const data = snap.data(); setRoomDetails({ id: snap.id, ...data });
+                if (appMode === 'online-share' && data.players?.length === data.maxPlayers) setAppMode('online-game');
+                setBoard(safeParse(data.board, [])); setDeck(safeParse(data.deck, [])); setHands(safeParse(data.hands, {}));
+                setTurn(data.turn); setWinner(data.winner); setLastMove(data.lastMove); setScores(data.scores || {0:0, 1:0}); 
+                setWinningLines(safeParse(data.winningLines, [])); setScoredIds(new Set(safeParse(data.scoredIds, [])));
+                if(data.playerNames) setPlayerNamesList(data.playerNames);
+                const newChats = data.chats || []; if (newChats.length > chats.length && !showChat) setUnreadCount(prev => prev + 1); setChats(newChats);
+                
+                if (data.lastPlayedCard && appMode === 'online-game') {
+                     if (data.turn === playerIndex) { }
+                     else { setVisualPlayedCard(data.lastPlayedCard); setTimeout(()=>setVisualPlayedCard(null), 2500); }
+                }
+                
+                if (data.winner !== null) { 
+                    setMessage("PERMAINAN SELESAI"); 
+                } 
+                else { const mover = data.playerNames?.[data.turn] || `P${data.turn+1}`; setMessage(data.turn === playerIndex ? "GILIRAN ANDA" : `GILIRAN ${mover.toUpperCase()}`); }
+            } else { setAppMode('menu'); setToast({sender:"SYSTEM", text:"Room bubar.", type:'error'}); }
+        }); return () => unsub();
+    }, [appMode, roomId, user, showGameOverModal, chats.length, showChat, playerIndex, roomDetails?.players?.length]);
 
-    // Arah pergerakan (Horizontal, Vertikal, Diagonal)
-    const directions = [
-      [0, 1], [1, 0], [1, 1], [1, -1]
-    ];
+    // --- LOGIKA CEK SEQUENCE MUTLAK (STRICT INTERSECTION & EXTENSION) ---
+    const checkNewSequences = (boardState, player, currentScoredIds, existingWinningLines) => {
+        let newLines = [], newIds = []; 
+        const team = getTeam(player); 
+        const dirs = [[0,1], [1,0], [1,1], [1,-1]]; 
+        
+        // Cek apakah cell milik tim (atau sudut)
+        const isOwner = (r, c) => { 
+            if (r<0 || r>=10 || c<0 || c>=10) return false; 
+            const cell = boardState[r][c]; 
+            return cell.type === 'corner' || (cell.chip !== null && getTeam(cell.chip) === team); 
+        };
 
-    const getPlayerTeam = (row, col) => {
-      const key = `${row},${col}`;
-      const cell = newBoardState[key];
-      // Sudut GRATIS (XX) dianggap dimiliki oleh team mana pun
-      if (REAL_BOARD_PATTERN[key] === 'XX') return team; 
-      return cell && cell.team === team ? team : null;
+        // Kumpulkan semua titik chip yang SUDAH TERKUNCI (locked) milik tim ini.
+        const lockedPoints = new Set();
+        existingWinningLines.filter(l => getTeam(l.team) === team).forEach(l => {
+            l.line.forEach(p => {
+                const cell = boardState[p.r][p.c];
+                // HANYA chip non-corner yang terkunci (locked chip) yang diperhitungkan sebagai simpang/perpanjangan.
+                if (cell.type !== 'corner' && cell.locked) {
+                    lockedPoints.add(`${p.r},${p.c}`);
+                }
+            });
+        });
+
+        console.log(`[LOGIKA SKOR] --- Mulai cek untuk Tim ${team} ---`);
+        console.log(`[LOGIKA SKOR] Chips non-corner terkunci tim sendiri: ${Array.from(lockedPoints).join(', ')}`);
+
+
+        for(let r=0; r<10; r++) {
+            for(let c=0; c<10; c++) {
+                if(!isOwner(r,c)) continue;
+                
+                for(let d of dirs) {
+                    let potentialLine = [];
+                    // Ambil 5 titik ke depan
+                    for(let k=0; k<5; k++) { 
+                        const nr=r+k*d[0], nc=c+k*d[1]; 
+                        if(isOwner(nr, nc)) potentialLine.push({r:nr, c:nc}); else break; 
+                    }
+
+                    // Jika panjangnya tepat 5
+                    if(potentialLine.length === 5) {
+                        const safeId = `${potentialLine[0].r},${potentialLine[0].c}-${potentialLine[4].r},${potentialLine[4].c}`;
+                        const safeIdRev = `${potentialLine[4].r},${potentialLine[4].c}-${potentialLine[0].r},${potentialLine[0].c}`;
+                        
+                        // Cek apakah sequence ini sudah tercatat sebelumnya
+                        if(!currentScoredIds.has(safeId) && !currentScoredIds.has(safeIdRev)) {
+                            
+                            // Hitung berapa banyak chip LOCKED non-corner milik sendiri yang dipakai ulang.
+                            let sharedLockedChipCount = 0;
+                            
+                            potentialLine.forEach(p => {
+                                const coord = `${p.r},${p.c}`;
+                                if (lockedPoints.has(coord)) {
+                                    sharedLockedChipCount++;
+                                }
+                            });
+                            
+                            const coords = potentialLine.map(p => `${p.r},${p.c}`).join(' -> ');
+
+                            // ATURAN MUTLAK: Maksimal 1 chip terkunci non-corner boleh dipakai ulang (Simpang X, Y, T).
+                            if (sharedLockedChipCount <= 1) {
+                                newLines.push(potentialLine);
+                                newIds.push(safeId);
+                                console.log(`[LOGIKA SKOR] ✅ SKOR DIHITUNG: Line 5 chip valid (${coords}). Shared Locked: ${sharedLockedChipCount}`);
+                            } else {
+                                console.log(`[LOGIKA SKOR] ❌ SKOR DITOLAK: Line 5 chip (${coords}) melanggar aturan simpang. Shared Locked: ${sharedLockedChipCount} (Max 1 diizinkan).`);
+                            }
+                            // Catatan: Corner dihitung sebagai Owner, tapi tidak termasuk dalam hitungan sharedLockedChipCount karena type-nya corner.
+                        } else {
+                            // Ini adalah sequence yang valid tapi sudah pernah dicetak sebelumnya
+                            console.log(`[LOGIKA SKOR] 🛑 SUDAH PERNAH SKOR: Line 5 chip (${safeId}) sudah ada dalam daftar yang dicetak.`);
+                        }
+                    } else if (potentialLine.length > 5) {
+                         // Ini mencegah perpanjangan sequence yang sudah terkunci
+                         console.log(`[LOGIKA SKOR] 🚫 ANTI-EKSTENSI: Ditemukan garis > 5 chip, dicek ulang. (Panjang: ${potentialLine.length})`);
+                         // Meskipun di code kita hanya cek length === 5, log ini berguna untuk analisis.
+                    }
+                }
+            }
+        } 
+        return { newLines, newIds };
     };
 
-    for (const [dr, dc] of directions) {
-      let maxLen = 1;
-      let currentLen = 1;
-      
-      // Cek satu arah (misalnya ke kanan/bawah)
-      for (let i = 1; i < sequenceGoal; i++) {
-        const nr = r + i * dr;
-        const nc = c + i * dc;
-        if (nr >= 0 && nr < boardSize && nc >= 0 && nc < boardSize && getPlayerTeam(nr, nc) === team) {
-          currentLen++;
+    const executeMove = (r, c, remove, idx, moveType = 'normal', cardUsed = null) => {
+        if (remove) {
+            setAnimatingOutCells(prev => new Set(prev).add(`${r},${c}`));
+            playEffect('punch');
+
+            setTimeout(() => {
+                const newBoard = JSON.parse(JSON.stringify(board));
+                newBoard[r][c].chip = null; 
+                newBoard[r][c].isWild = false;
+                newBoard[r][c].chipRank = null;
+                newBoard[r][c].chipSuit = null;
+                finalizeMove(newBoard, r, c, remove, idx, moveType);
+                setAnimatingOutCells(prev => {
+                    const next = new Set(prev);
+                    next.delete(`${r},${c}`);
+                    return next;
+                });
+            }, 600); 
         } else {
-          break;
+             const newBoard = JSON.parse(JSON.stringify(board));
+             newBoard[r][c].chip = turn; newBoard[r][c].isWild = (moveType === 'wild');
+             if (cardUsed) {
+                 newBoard[r][c].chipRank = cardUsed.rank;
+                 newBoard[r][c].chipSuit = cardUsed.suit;
+             }
+             if(moveType==='wild') playEffect('wild'); else playEffect('move');
+             finalizeMove(newBoard, r, c, remove, idx, moveType);
         }
-      }
+    };
 
-      // Cek arah sebaliknya (misalnya ke kiri/atas)
-      for (let i = 1; i < sequenceGoal; i++) {
-        const nr = r - i * dr;
-        const nc = c - i * dc;
-        if (nr >= 0 && nr < boardSize && nc >= 0 && nc < boardSize && getPlayerTeam(nr, nc) === team) {
-          currentLen++;
-        } else {
-          break;
-        }
-      }
-      
-      maxLen = Math.max(maxLen, currentLen);
-      if (maxLen >= sequenceGoal) return true;
-    }
+    const resetGameState = () => {
+        setRoomId(null);
+        setPlayerIndex(null);
+        setMaxPlayers(2);
+        setBoard([]);
+        setDeck([]);
+        setHands({0:[], 1:[], 2:[], 3:[]});
+        setTurn(0);
+        setWinner(null);
+        setShowGameOverModal(false);
+        setLastMove(null);
+        setChats([]);
+        setShowChat(false);
+        setScores({0:0, 1:0});
+        setWinningLines([]);
+        setScoredIds(new Set());
+        setLoadingText("");
+        setUnreadCount(0);
+        setErrorCell(null);
+        setRoomDetails(null);
+        setJoinCodeInput('');
+        setIsDealing(false);
+        setVisualPlayedCard(null);
+        setAnimatingOutCells(new Set());
+    };
 
-    return false;
-  }, []);
 
-  // Menangani klik pada kartu di papan
-  const handleBoardClick = async (row, col) => {
-    if (!db || !roomData || gameStatus !== 'started' || currentTurn !== userId) {
-      return showMessage("Bukan giliran Anda atau game belum dimulai.", true);
-    }
-
-    if (selectedCardIndex === null) {
-      return showMessage("Pilih kartu dari tangan Anda terlebih dahulu.", true);
-    }
-
-    const cardToPlay = hand[selectedCardIndex];
-    const cardCodeOnBoard = REAL_BOARD_PATTERN[`${row},${col}`];
-    const isOccupied = boardState[`${row},${col}`] !== undefined;
-    const isCorner = cardCodeOnBoard === 'XX';
-
-    const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', COLLECTION_NAME, roomId);
-    const currentPlayer = roomData.players.find(p => p.id === userId);
-    const playerTeam = currentPlayer.team;
-    
-    let isPlaceable = false;
-    let cardAction = 'place'; // 'place' atau 'remove'
-
-    if (isCorner) {
-      // Sudut GRATIS (XX) selalu bisa ditempati.
-      if (isOccupied) {
-        return showMessage("Kotak sudut sudah ditempati.", true);
-      }
-      isPlaceable = true;
-
-    } else if (cardToPlay.includes('J')) { // Jack dimainkan
-      
-      if (cardToPlay === 'JS' || cardToPlay === 'JC') { // Jack Sekop/Keriting (Wildcard)
-        if (isOccupied) {
-            return showMessage("Tidak bisa menempatkan Jack di kotak yang sudah ada chip.", true);
-        }
-        isPlaceable = true; // Bisa ditempatkan di mana saja yang kosong
-      
-      } else if (cardToPlay === 'J♠') { // Jack Sekop (1 Mata - Menghapus)
-        cardAction = 'remove';
-        if (isOccupied) {
-          const occupiedTeam = boardState[`${row},${col}`].team;
-          // Jack Sekop tidak bisa menghapus chip dari tim sendiri
-          if (occupiedTeam !== playerTeam) {
-            isPlaceable = true;
-          } else {
-            return showMessage("Tidak bisa menghapus chip tim Anda sendiri.", true);
-          }
-        } else {
-          return showMessage("Jack Sekop hanya bisa digunakan untuk menghapus chip lawan.", true);
-        }
-      }
-
-    } else { // Kartu normal dimainkan
-      
-      // Kartu normal harus sesuai dengan kartu di papan DAN kotak harus kosong
-      const matchingBoardCard = REAL_BOARD_PATTERN[`${row},${col}`];
-      if (cardToPlay === matchingBoardCard && !isOccupied) {
-        isPlaceable = true;
-      } else if (cardToPlay !== matchingBoardCard) {
-        return showMessage(`Kartu ${getCardName(cardToPlay)} tidak cocok dengan kartu papan.`, true);
-      } else if (isOccupied) {
-         return showMessage("Kotak sudah ditempati.", true);
-      }
-    }
-    
-    if (isPlaceable) {
-      try {
-        let newBoardState = { ...boardState };
-        let chipPlaced = false;
-        let logMessage = '';
-
-        if (cardAction === 'place') {
-          newBoardState[`${row},${col}`] = {
-            playerId: userId,
-            team: playerTeam,
-            card: cardCodeOnBoard,
-          };
-          chipPlaced = true;
-          logMessage = `${nickname} menempatkan chip di ${cardCodeOnBoard} menggunakan ${getCardName(cardToPlay)}.`;
-        } else if (cardAction === 'remove') {
-          // Aksi hapus (hanya dengan Jack Sekop)
-          delete newBoardState[`${row},${col}`];
-          chipPlaced = true;
-          logMessage = `${nickname} menghapus chip lawan di ${cardCodeOnBoard} menggunakan Jack Sekop.`;
-        } else {
-          return showMessage("Aksi kartu tidak valid.", true);
-        }
+    const finalizeMove = (newBoard, r, c, remove, idx, moveType) => {
+        let newScores = {...scores}, newWinningLines = [...winningLines], team = getTeam(turn), hasWon = false;
+        let currentScoredIds = scoredIds; 
         
-        // Cek Sequence setelah aksi
-        const sequenceAchieved = checkSequence(newBoardState, playerTeam, `${row},${col}`);
-        let gameFinished = false;
-
-        const nextTurnId = getNextTurnId(roomData.turnOrder, userId);
-        
-        const updatePayload = {
-          currentTurn: nextTurnId,
-          playerHands: { [userId]: arrayRemove(cardToPlay) },
-          boardState: newBoardState,
-          log: arrayUnion({ type: 'MOVE', player: nickname, card: getCardName(cardToPlay), position: `${row},${col}`, action: cardAction, timestamp: new Date().toISOString() })
-        };
-        
-        if (sequenceAchieved) {
-            const newScore = (roomData.teams[playerTeam]?.score || 0) + 1;
-            updatePayload.teams = { 
-                ...roomData.teams, 
-                [playerTeam]: { ...roomData.teams[playerTeam], score: newScore } 
-            };
-            logMessage += ` (SEQUENCE PERTAMA DARI TEAM ${playerTeam}!)`;
+        if (!remove) {
+            const { newLines, newIds } = checkNewSequences(newBoard, turn, currentScoredIds, newWinningLines);
             
-            // Periksa kemenangan (target 2 Sequence)
-            if (newScore >= 2) {
-                updatePayload.status = 'finished';
-                gameFinished = true;
-                logMessage += ` (GAME SELESAI! TEAM ${playerTeam} MENANG!)`;
+            if (newLines.length > 0) {
+                newScores[team] += newLines.length; 
+                // Catat team yang membuat sequence untuk penarikan garis.
+                newWinningLines = [...newWinningLines, ...newLines.map(line => ({ team, line }))];
+                newIds.forEach(id => currentScoredIds.add(id));
+                
+                // KUNCI CHIP (LOCK) PERMANEN
+                newLines.forEach(line => line.forEach(p => { 
+                    if(newBoard[p.r][p.c].type !== 'corner') {
+                        newBoard[p.r][p.c].locked = true; 
+                    }
+                }));
+                
+                playEffect('win');
+                if (newScores[team] >= WINNING_SCORE) { 
+                    setWinner(team); 
+                    hasWon = true; 
+                }
+            }
+        }
+
+        const newHand = [...hands[turn]]; const playedCard = newHand[idx]; newHand.splice(idx, 1);
+        let newDeck = [...deck]; if (newDeck.length > 0) { const newCard = newDeck.shift(); if (newCard) newHand.push(newCard); }
+        const newHands = {...hands, [turn]: newHand};
+        let nextTurn = (turn + 1) % maxPlayers;
+
+        setBoard(newBoard); setHands(newHands); setDeck(newDeck); setTurn(nextTurn);
+        setScores(newScores); setWinningLines(newWinningLines); setScoredIds(new Set(currentScoredIds)); 
+        setSelectedCardIdx(null); setLastMove(remove ? null : {r,c, type: moveType}); setTimeLeft(TURN_DURATION);
+        if (!hasWon) setMessage(appMode==='offline-bot' && nextTurn===1 ? "Komputer Mikir..." : `Giliran ${playerNamesList[nextTurn] || 'Lawan'}`);
+
+        if (appMode === 'online-game') {
+            updateDoc(getRoomRef(roomId), {
+                board: JSON.stringify(newBoard), hands: JSON.stringify(newHands), deck: JSON.stringify(newDeck),
+                turn: nextTurn, winner: hasWon ? team : null, lastMove: remove ? null : {r,c, type: moveType},
+                scores: newScores, winningLines: JSON.stringify(newWinningLines), scoredIds: JSON.stringify(Array.from(currentScoredIds)), lastPlayedCard: playedCard
+            }).catch(console.error);
+        }
+    }
+
+    const botMove = (currBoard, currHand, currDeck) => {
+        if (!currHand?.length) return; const moves = [];
+        currHand.forEach((c, idx) => {
+            for(let r=0; r<10; r++) for(let k=0; k<10; k++) {
+                const cell = currBoard[r][k];
+                if(cell.type === 'corner' || cell.locked) continue;
+                if(c.rank === 'J') {
+                    if(isTwoEyedJack(c.rank, c.suit) && !cell.chip) moves.push({r,c:k,idx, rm:false, type:'wild', score: 10, card: c});
+                    if(isOneEyedJack(c.rank, c.suit) && cell.chip!==null && getTeam(cell.chip)===0 && !cell.locked) moves.push({r,c:k,idx, rm:true, type:'remove', score: 20, card: c});
+                } else if (cell.rank===c.rank && cell.suit===c.suit && !cell.chip) {
+                     // checkNeighbors sekarang dapat diakses
+                     const score = checkNeighbors(currBoard, r, k, 1) * 10 + Math.random();
+                     moves.push({r,c:k,idx, rm:false, type:'normal', score, card: c});
+                }
+            }
+        });
+        if(moves.length > 0) { moves.sort((a,b) => b.score - a.score); executeMove(moves[0].r, moves[0].c, moves[0].rm, moves[0].idx, moves[0].type, moves[0].card); } 
+        else { const newHand = [...currHand]; newHand.shift(); if(currDeck.length) newHand.push(currDeck[0]); setHands(prev => ({...prev, 1: newHand})); setDeck(prev => prev.slice(1)); setTurn(0); setMessage("Bot Lewat Giliran"); }
+    };
+
+    useEffect(() => { if (appMode === 'offline-bot' && turn === 1 && !winner) { const t = setTimeout(() => botMove(board, hands[1], deck), 2000); return () => clearTimeout(t); } }, [turn, appMode, winner, board, hands, deck]);
+
+    const handleBoardClick = useCallback((r, c) => {
+        if (winner !== null) return;
+        if (appMode === 'online-game' && turn !== playerIndex) { setToast({sender: "SYSTEM", text: "Tunggu giliran!", type: 'error'}); return; }
+        if (selectedCardIdx === null) return;
+        
+        let currentHandIdx = appMode === 'online-game' ? playerIndex : turn;
+        const myHand = hands[currentHandIdx] || []; const card = myHand[selectedCardIdx]; const cell = board[r][c];
+        if (!card || !cell) return;
+        if (cell.type === 'corner') { setErrorCell({r,c}); setTimeout(() => setErrorCell(null), 500); return; }
+
+        let valid = false, remove = false, moveType = 'normal'; const myTeam = getTeam(turn);
+        
+        if (card.rank === 'J') {
+            if (isTwoEyedJack(card.rank, card.suit)) { 
+                // ATURAN MUTLAK: Jack Dua Mata TIDAK BISA MENIMPA chip apapun (locked atau tidak).
+                if(cell.chip === null) { 
+                    valid = true; 
+                    moveType = 'wild'; 
+                } else {
+                    setErrorCell({r,c}); 
+                    playEffect('error');
+                    setToast({sender:'SYS', text:'TIDAK BISA MENIMPA! Kotak sudah terisi.', type:'error'});
+                    return;
+                }
+            } 
+            else if (isOneEyedJack(card.rank, card.suit)) { 
+                // Remove card: Hanya bisa lawan, dan TIDAK BISA jika locked (TERKUNCI).
+                if(cell.chip !== null && getTeam(cell.chip) !== myTeam) {
+                    if (cell.locked) {
+                        setErrorCell({r,c}); 
+                        playEffect('error');
+                        setToast({sender:'SYS', text:'Chip TERKUNCI! Tidak bisa dihapus.', type:'error'});
+                        return; 
+                    }
+                    valid=true; remove=true; moveType = 'remove'; 
+                } else if (cell.chip !== null && getTeam(cell.chip) === myTeam) {
+                     setErrorCell({r,c});
+                     playEffect('error');
+                     setToast({sender:'SYS', text:'Jack Satu Mata hanya untuk hapus chip lawan!', type:'error'});
+                     return;
+                } else if (cell.chip === null) {
+                    setErrorCell({r,c});
+                    playEffect('error');
+                    setToast({sender:'SYS', text:'Jack Satu Mata hanya untuk hapus chip lawan!', type:'error'});
+                    return;
+                }
+            }
+        } else if (cell.rank === card.rank && cell.suit === card.suit) { 
+            // Kartu Biasa: TIDAK BISA MENIMPA chip apapun
+            if (cell.chip === null) {
+                valid = true;
+            }
+            else if (cell.chip !== null) {
+                setErrorCell({r,c}); 
+                playEffect('error');
+                setToast({sender:'SYS', text:'Kotak ini sudah terisi.', type:'error'});
+                return; 
             }
         }
         
-        // Ambil kartu baru dari deck
-        const newDeck = [...roomData.deck];
-        const newCard = newDeck.shift();
-        if (newCard) {
-            updatePayload.deck = newDeck;
-            updatePayload.playerHands = { 
-                ...updatePayload.playerHands, 
-                [userId]: arrayUnion(newCard) 
-            };
+        if (valid) executeMove(r, c, remove, selectedCardIdx, moveType, card); else { setErrorCell({r,c}); setTimeout(() => setErrorCell(null), 500); playEffect('error'); }
+    }, [winner, appMode, turn, playerIndex, selectedCardIdx, hands, board, playEffect, executeMove]);
+
+    const handleSendChat = (text) => {
+        const msg = { senderName: playerName, text, senderIndex: appMode==='online-game' ? playerIndex : 0 };
+        if (appMode === 'online-game') {
+            updateDoc(getRoomRef(roomId), { chats: arrayUnion(msg) }).catch(console.error);
         } else {
-            // Deck habis, game berakhir imbang?
+            setChats(prev => [...prev, msg]);
+        }
+        setUnreadCount(0);
+    };
+
+    const cycleSoundMode = () => {
+        setSoundMode(prev => prev === 'sound' ? 'vibrate' : prev === 'vibrate' ? 'silent' : 'sound');
+    };
+    
+    const handleQuit = () => {
+        if (showForfeitModal) return; 
+        if (winner !== null) { resetGameState(); setAppMode('menu'); } // <-- MEMASTIKAN RESET STATE JIKA SUDAH ADA PEMENANG
+        else if (appMode === 'offline-bot' || appMode === 'online-game') { setShowForfeitModal(true); } 
+        else { resetGameState(); setAppMode('menu'); }
+    };
+    
+    const confirmForfeitAndQuit = () => {
+        if(appMode === 'menu') return;
+        setShowForfeitModal(false); 
+        const currentAppMode = appMode; 
+        
+        if (currentAppMode === 'offline-bot') {
+            // Dalam mode Bot, lawan (indeks 1, tim 1) menang.
+            setWinner(1); 
+            setShowGameOverModal(true); // Tampilkan Game Over
+        } else if (currentAppMode === 'online-game') {
+            // Dalam mode Online, lawan (tim lain) menang.
+            const opponentTeam = getTeam(playerIndex) === 0 ? 1 : 0;
+            updateDoc(getRoomRef(roomId), { winner: opponentTeam }).catch(console.error);
+            // Tetapkan pemenang lokal untuk memicu modal Game Over (di useEffect)
+            setWinner(opponentTeam); 
+            setShowGameOverModal(true); // Tampilkan Game Over
         }
         
-        await updateDoc(roomRef, updatePayload);
-        
-        setSelectedCardIndex(null);
-        showMessage(logMessage, false);
-        if (gameFinished) {
-            showMessage(`Game Selesai! TEAM ${playerTeam} MENANG!`, false);
+        // Jeda sebentar sebelum reset state dan kembali ke menu (seperti delay Game Over)
+        setTimeout(() => {
+            resetGameState(); 
+            setAppMode('menu'); 
+        }, 1500); // Jeda 1.5 detik agar modal Game Over sempat terlihat
+    };
+
+    const initGame = (mode, playerCount = 2) => {
+        setAppMode('dealing'); setIsDealing(true);
+        const d = createDeck(); 
+        const b = REAL_BOARD_PATTERN.map((rowStr, r) => rowStr.map((cardStr, c) => { const coord = `${r},${c}`; if (cardStr === 'XX') return { type: 'corner', r, c, id: coord }; return { type: 'card', rank: cardStr.slice(0, -1), suit: cardStr.slice(-1), r, c, chip: null, chipRank: null, chipSuit: null, locked: false, isWild: false, id: coord }; }));
+        setTimeout(() => {
+            setDeck(d); setBoard(b); 
+            const h = {0: d.splice(0, 5), 1: d.splice(0, 5)}; if(playerCount === 4) { h[2] = d.splice(0, 5); h[3] = d.splice(0, 5); } else { h[2] = []; h[3] = []; }
+            setHands(h); setTurn(0); setWinner(null); setChats([]); setAppMode(mode); setMaxPlayers(playerCount); setScores({0:0, 1:0}); setWinningLines([]); setScoredIds(new Set()); setTimeLeft(TURN_DURATION); setShowGameOverModal(false); setIsDealing(false);
+            if(mode === 'offline-bot') { setPlayerNamesList({0: playerName, 1: `Robot (${botLevel === 'easy' ? 'Mudah' : botLevel === 'medium' ? 'Sedang' : 'Sulit'})`}); setChats([{senderName: "Bot", text: "Ayo main serius!"}]); }
+        }, 3000);
+    };
+
+    const createRoom = async (pCount) => {
+        if (!isOnlineAvailable || !db) { 
+            setLoadingText("Gagal: Konfigurasi Firebase tidak valid.");
+            setTimeout(() => { setLoadingText(""); setAppMode('online-setup'); }, 5000);
+            return;
+        }
+        if (!user) {
+             setLoadingText("Gagal: Autentikasi belum siap. Coba lagi.");
+             setTimeout(() => { setLoadingText(""); setAppMode('online-setup'); }, 3000);
+             return;
+        }
+        setLoadingText("Membuat Room...");
+        const newRoomId = generateNumericId();
+        try {
+            const initialBoard = REAL_BOARD_PATTERN.map((rowStr, r) => rowStr.map((cardStr, c) => { 
+                const coord = `${r},${c}`; 
+                if (cardStr === 'XX') return { type: 'corner', r, c, id: coord }; 
+                return { type: 'card', rank: cardStr.slice(0, -1), suit: cardStr.slice(-1), r, c, chip: null, chipRank: null, chipSuit: null, locked: false, isWild: false, id: coord }; 
+            }));
+            const roomRef = getRoomRef(newRoomId);
+            await setDoc(roomRef, {
+                hostId: user.uid, players: [user.uid], maxPlayers: pCount, playerNames: {[0]: playerName},
+                status: 'waiting', turn: 0, winner: null, board: JSON.stringify(initialBoard), hands: JSON.stringify({}), deck: JSON.stringify([]),
+                chats: [{senderName: "SYSTEM", text: "Room dibuat", senderIndex: -1}], createdAt: Date.now(),
+                lastPlayedCard: null, lastMove: null, scores: {0:0, 1:0}, winningLines: JSON.stringify([]), scoredIds: JSON.stringify([])
+            });
+            setRoomId(newRoomId); setPlayerIndex(0); setMaxPlayers(pCount); setAppMode('online-share'); setLoadingText("");
+        } catch (e) { 
+            console.error("Error creating room:", e);
+            const errorMsg = e.message && e.message.includes("permission") 
+                ? "Kesalahan Izin: Pastikan Anda sudah mengklik tombol 'PUBLISH' di tab Rules Firebase Anda."
+                : `Gagal membuat room: ${e.message || "Unknown Error"}`;
+            setLoadingText(errorMsg);
+            setTimeout(() => { setLoadingText(""); setAppMode('online-setup'); }, 8000);
+        }
+    };
+
+    const joinRoom = async () => {
+        if (!isOnlineAvailable || !db) {
+            setLoadingText("Gagal: Konfigurasi Firebase tidak valid.");
+            setTimeout(() => { setLoadingText(""); setAppMode('online-setup'); }, 5000);
+            return;
+        }
+        if (!user) {
+             setLoadingText("Gagal: Autentikasi belum siap. Coba lagi.");
+             setTimeout(() => { setLoadingText(""); setAppMode('online-setup'); }, 3000);
+             return;
         }
 
-      } catch (error) {
-        console.error("Gagal melakukan aksi:", error);
-        showMessage("Terjadi kesalahan data. Silakan coba lagi.", true);
-      }
-    }
-  };
+        if (!joinCodeInput) { setToast({sender:'SYS', text:'Masukkan kode room!', type:'error'}); return; }
+        setLoadingText("Bergabung...");
+        try {
+            const roomRef = getRoomRef(joinCodeInput);
+            const snap = await getDoc(roomRef);
+            if (snap.exists()) {
+                const data = snap.data();
+                
+                // Cek apakah room penuh
+                if (data.players.length >= data.maxPlayers && !data.players.includes(user.uid)) {
+                    setToast({sender:'SYS', text:'Room Penuh!', type:'error'});
+                    setLoadingText("");
+                    return;
+                }
+                
+                let myIdx = data.players.indexOf(user.uid);
+                if (myIdx === -1) { 
+                    myIdx = data.players.length; 
+                    await updateDoc(roomRef, { players: arrayUnion(user.uid), [`playerNames.${myIdx}`]: playerName }); 
+                    await updateDoc(roomRef, { chats: arrayUnion({ senderName: "WASIT", text: `${playerName} bergabung.`, senderIndex: -1 }) });
+                }
+                setRoomId(joinCodeInput); setPlayerIndex(myIdx); setMaxPlayers(data.maxPlayers);
+                const currentPlayers = data.players.length + (myIdx === data.players.length ? 1 : 0);
 
-  // --- 4. RENDER UI ---
+                if (currentPlayers === data.maxPlayers && data.status === 'waiting') { 
+                    if(myIdx === 0) { 
+                        const d = createDeck();
+                        const h = {0: d.splice(0, 5), 1: d.splice(0, 5)}; 
+                        if(data.maxPlayers === 4) { h[2] = d.splice(0, 5); h[3] = d.splice(0, 5); }
+                        await updateDoc(roomRef, { status: 'started', hands: JSON.stringify(h), deck: JSON.stringify(d), chats: arrayUnion({ senderName: "WASIT", text: "Game dimulai!", senderIndex: -1 }) });
+                        setAppMode('online-game');
+                    } else { setAppMode('online-game'); }
+                }
+                else if (data.status === 'started') { setAppMode('online-game'); } else { setAppMode('online-share'); }
+            } else {
+                setToast({sender:'SYS', text:'Room tidak ditemukan!', type:'error'});
+            }
+        } catch (e) { 
+            console.error("Error joining room:", e); 
+            setToast({sender:'SYS', text:`Gagal bergabung: ${e.message}`, type:'error'});
+        }
+        setLoadingText("");
+    };
 
-  // Component: Tampilan Kotak Papan
-  const BoardCell = ({ row, col, content, chipData, onClick }) => {
-    const key = `${row},${col}`;
-    const cardCode = REAL_BOARD_PATTERN[key];
-    const isCorner = cardCode === 'XX';
-    const isOccupied = chipData !== undefined;
-    const isMyTeam = isOccupied && roomData.players.find(p => p.id === userId)?.team === chipData.team;
+    const copyCode = () => {
+        navigator.clipboard.writeText(roomId).then(() => setToast({sender:'SYS', text:'Kode disalin!', type:'ok'}));
+        setTimeout(()=>setToast(null), 1500);
+    };
+
+    // --- RENDER HELPERS ---
+    const winningChipSet = useMemo(() => {
+        const set = new Set();
+        winningLines.forEach(lineObj => {
+            lineObj.line.forEach(p => set.add(`${p.r},${p.c}`));
+        });
+        return set;
+    }, [winningLines]);
     
-    // Tentukan warna chip
-    let chipColor = 'bg-gray-700';
-    let ringColor = 'ring-gray-300';
-    let teamText = '';
-    
-    if (isOccupied) {
-        const teamColor = roomData.teams[chipData.team]?.color;
-        chipColor = teamColor === 'blue' ? 'bg-blue-600' : 'bg-red-600';
-        ringColor = teamColor === 'blue' ? 'ring-blue-300' : 'ring-red-300';
-        teamText = `T${chipData.team}`;
+    const ForfeitConfirmationModal = ({ onConfirm, onCancel }) => (
+        <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"> 
+             <div className="bg-zinc-900 border border-rose-500/50 p-6 rounded-2xl text-center max-w-xs shadow-[0_0_30px_rgba(244,63,94,0.3)]"> 
+                 <AlertOctagon size={40} className="text-rose-500 mx-auto mb-4"/>
+                 <h3 className="text-lg font-black text-white mb-2">GUGUR SEKARANG?</h3>
+                 <p className="text-sm text-zinc-400 mb-6">Anda akan dianggap **KALAH** dan lawan akan dinyatakan sebagai pemenang.</p>
+                 <div className="flex gap-4 justify-center">
+                     <button onClick={onCancel} className="flex-1 py-3 bg-zinc-700 hover:bg-zinc-600 rounded-lg font-bold text-white transition-colors">BATAL</button>
+                     <button onClick={onConfirm} className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 rounded-lg font-bold text-white transition-colors flex items-center justify-center gap-1"><LogOut size={16}/> YA, GUGUR</button>
+                 </div>
+             </div>
+        </div>
+    );
+
+    if (appMode === 'dealing') return <div className="min-h-screen bg-[#050505] flex items-center justify-center relative overflow-hidden"><DealingOverlay onComplete={()=>{resetGameState(); setAppMode('menu'); setIsDealing(false);}}/></div>;
+
+    if (appMode === 'menu') {
+        return (
+            <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4 font-sans relative overflow-hidden">
+                 <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-900/20 via-[#050505] to-[#050505]"></div>
+                 {showBotSelectModal && (
+                     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                         <div className="bg-gradient-to-br from-zinc-900 to-black border border-amber-500/50 p-1 rounded-2xl w-full max-w-sm animate-drop-in shadow-[0_0_50px_rgba(245,158,11,0.3)]">
+                             <div className="bg-[#111] rounded-xl p-6 relative overflow-hidden">
+                                 <div className="absolute top-0 right-0 p-4 opacity-20"><Bot size={100} className="text-amber-500"/></div>
+                                 <h3 className="text-xl font-black text-white mb-1 uppercase tracking-wider relative z-10">Tingkat Kesulitan</h3>
+                                 <p className="text-zinc-400 text-xs mb-6 relative z-10">Seberapa pintar robot yang ingin Anda lawan?</p>
+                                 <div className="space-y-3 relative z-10">
+                                     <button onClick={() => { setBotLevel('easy'); setShowBotSelectModal(false); initGame('offline-bot'); }} className="w-full py-4 bg-gradient-to-r from-emerald-600 to-emerald-800 hover:from-emerald-500 hover:to-emerald-700 rounded-lg font-black uppercase tracking-widest text-sm transition-all border border-emerald-400/30 flex items-center justify-between px-4 group"><span>MUDAH</span> <span className="text-emerald-200 group-hover:translate-x-1 transition-transform">😊</span></button>
+                                     <button onClick={() => { setBotLevel('medium'); setShowBotSelectModal(false); initGame('offline-bot'); }} className="w-full py-4 bg-gradient-to-r from-amber-600 to-amber-800 hover:from-amber-500 hover:to-amber-700 rounded-lg font-black uppercase tracking-widest text-sm transition-all border border-amber-400/30 flex items-center justify-between px-4 group"><span>SEDANG</span> <span className="text-amber-200 group-hover:translate-x-1 transition-transform">🤔</span></button>
+                                     <button onClick={() => { setBotLevel('hard'); setShowBotSelectModal(false); initGame('offline-bot'); }} className="w-full py-4 bg-gradient-to-r from-rose-600 to-rose-800 hover:from-rose-500 hover:to-rose-700 rounded-lg font-black uppercase tracking-widest text-sm transition-all border border-rose-400/30 flex items-center justify-between px-4 group"><span>SULIT</span> <span className="text-rose-200 group-hover:translate-x-1 transition-transform">😈</span></button>
+                                 </div>
+                                 <button onClick={() => setShowBotSelectModal(false)} className="mt-6 w-full py-2 text-zinc-500 text-xs font-bold hover:text-white transition-colors">KEMBALI</button>
+                             </div>
+                         </div>
+                     </div>
+                 )}
+                 {showGuideModal && (
+                     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                         <div className="bg-zinc-900 border border-white/20 p-6 rounded-2xl w-full max-w-md max-h-[80vh] overflow-y-auto animate-drop-in">
+                             <div className="flex justify-between items-center mb-4">
+                                 <h3 className="text-xl font-bold text-amber-500">Panduan Bermain</h3>
+                                 <button onClick={()=>setShowGuideModal(false)}><X size={20} className="text-zinc-400"/></button>
+                             </div>
+                             <div className="text-sm text-zinc-300 space-y-3 leading-relaxed">
+                                 <p><strong>Tujuan:</strong> Buat **3 baris** (sequence) yang terdiri dari 5 chip warna Anda.</p>
+                                 <p><strong>Kartu Jack:</strong></p>
+                                 <ul className="list-disc pl-5 space-y-1">
+                                     <li><span className="text-rose-400 font-bold">Jack Dua Mata:</span> Wild Card (Taruh di mana saja). **Tidak bisa menimpa chip (sudah terisi)**.</li>
+                                     <li><span className="text-rose-400 font-bold">Jack Satu Mata:</span> Remove (Buang chip lawan yang **BELUM terkunci**).</li>
+                                 </ul>
+                                 <p><strong>Aturan Khusus:</strong></p>
+                                 <ul className="list-disc pl-5 space-y-1">
+                                    <li>**Kunci (Lock):** Baris 5 chip yang sudah jadi akan terkunci **permanen** dan tidak bisa dibuang oleh Jack.</li>
+                                    <li>**Anti-Ekstensi:** Baris 5 chip yang sudah terkunci **tidak bisa** disambung menjadi 6, 7, atau lebih untuk mendapatkan poin tambahan.</li>
+                                    <li>**Simpang (Intersection):** Baris 5 chip baru dapat dibuat dengan **maksimal satu chip non-corner** yang sudah terkunci (locked) dari tim Anda. Chip yang terkunci ini berfungsi sebagai simpang (intersection).</li>
+                                    <li>**Sudut (Corner):** Empat chip sudut dihitung sebagai chip tim Anda (Wild) saat membuat sequence. Corner **tidak dapat** di-remove oleh lawan dan tidak terhitung sebagai 'simpang' yang dibatasi. Boleh disimpang dengan 4 kartu terkunci (maksimal 1 chip terkunci non-corner tim sendiri).</li>
+                                 </ul>
+                             </div>
+                         </div>
+                     </div>
+                 )}
+                 <div className="relative z-10 w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl text-center">
+                      <LogoFourCards />
+                      <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-amber-300 to-amber-600 mb-1 tracking-tight">SEQUENCE</h1>
+                      <p className="text-zinc-400 text-xs font-bold tracking-[0.3em] uppercase mb-1">Ultimate Edition</p>
+                      <p className="text-amber-600/80 text-[10px] font-mono tracking-widest mb-6">BY SETIAWAN</p>
+                      <div className="mb-6 flex justify-center"><span className="bg-emerald-900/40 border border-emerald-500/30 text-emerald-400 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1"><ShieldCheck size={12} /> Aman Firebase</span></div>
+                      <div className="space-y-4">
+                           <div className="relative group">
+                               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Edit3 className="text-amber-500/50 group-focus-within:text-amber-500 transition-colors" size={18} /></div>
+                               <input type="text" value={playerName} onChange={e=>setPlayerName(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all font-bold text-center tracking-wide" placeholder="Nama Pemain"/>
+                           </div>
+                           <div className="grid grid-cols-2 gap-3 pt-2">
+                                <button onClick={()=>setShowBotSelectModal(true)} className="bg-gradient-to-br from-indigo-600 to-indigo-800 hover:from-indigo-500 hover:to-indigo-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-900/30 flex flex-col items-center gap-2 transition-all hover:scale-[1.02] border border-white/10"><Bot size={24} /> VS Robot</button>
+                                <button onClick={()=>setAppMode('online-setup')} className="bg-gradient-to-br from-rose-600 to-rose-800 hover:from-rose-500 hover:to-rose-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-rose-900/30 flex flex-col items-center gap-2 transition-all hover:scale-[1.02] border border-white/10"><Users size={24} /> Online</button>
+                           </div>
+                           <button onClick={()=>setShowGuideModal(true)} className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl font-bold text-zinc-300 text-sm flex items-center justify-center gap-2 border border-white/5 transition-all"><BookOpen size={16} /> Panduan Bermain</button>
+                      </div>
+                 </div>
+            </div>
+        );
     }
+
+    if (appMode === 'online-setup') {
+        return (
+            <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4 font-sans relative">
+                 <div className="w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl relative z-10">
+                      <button onClick={()=>setAppMode('menu')} className="absolute top-4 right-4 text-zinc-500 hover:text-white transition-colors bg-white/10 rounded-full p-1"><X size={20}/></button>
+                      <h2 className="text-2xl font-bold text-white text-center mb-6 tracking-wide">LOBBY ONLINE</h2>
+                      {loadingText ? (
+                          <div className="flex flex-col items-center py-10"><Loader className="animate-spin text-amber-500 mb-4" size={32}/><p className="text-zinc-400 animate-pulse">{loadingText}</p></div>
+                      ) : (
+                          <div className="space-y-6">
+                              <div className="space-y-3">
+                                  <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider text-center block">Buat Room Baru</label>
+                                  <div className="grid grid-cols-2 gap-4">
+                                      <button onClick={()=>createRoom(2)} className="relative overflow-hidden bg-gradient-to-br from-amber-500 to-amber-700 hover:from-amber-400 hover:to-amber-600 text-white py-6 rounded-2xl font-black text-xl transition-all shadow-lg border border-amber-300/30 group"><span className="relative z-10 flex flex-col items-center"><Sword size={24} className="mb-1 opacity-80"/>1 vs 1</span><div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform"></div></button>
+                                      <button onClick={()=>createRoom(4)} className="relative overflow-hidden bg-gradient-to-br from-rose-500 to-rose-700 hover:from-rose-400 hover:to-rose-600 text-white py-6 rounded-2xl font-black text-xl transition-all shadow-lg border border-rose-300/30 group"><span className="relative z-10 flex flex-col items-center"><Users size={24} className="mb-1 opacity-80"/>2 vs 2</span><div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform"></div></button>
+                                  </div>
+                              </div>
+                              <div className="relative flex items-center py-2"><div className="flex-grow border-t border-white/10"></div><span className="flex-shrink-0 mx-4 text-zinc-600 text-[10px] font-bold uppercase">ATAU GABUNG</span><div className="flex-grow border-t border-white/10"></div></div>
+                              <div className="flex gap-2"><input type="text" value={joinCodeInput} onChange={e=>setJoinCodeInput(e.target.value)} placeholder="Masukkan Kode Room" className="flex-grow bg-black/40 border border-white/10 rounded-xl px-4 text-white focus:outline-none focus:border-amber-500 font-mono text-center tracking-widest text-lg font-bold" /><button onClick={joinRoom} className="bg-zinc-700 hover:bg-zinc-600 text-white px-6 rounded-xl font-bold transition-colors"><Play size={24}/></button></div>
+                          </div>
+                      )}
+                 </div>
+            </div>
+        );
+    }
+
+    if (appMode === 'online-share') {
+        return (
+            <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
+                 <div className="w-full max-w-md bg-zinc-900 border border-amber-500/20 p-8 rounded-3xl text-center animate-drop-in">
+                      <h2 className="text-zinc-400 text-sm font-bold uppercase tracking-widest mb-4">Ruangan Dibuat</h2>
+                      <div className="bg-black/50 p-6 rounded-2xl border border-white/10 mb-6">
+                          <p className="text-xs text-zinc-500 mb-2">BAGIKAN KODE INI KE TEMAN</p>
+                          <div className="text-5xl font-mono font-black text-amber-500 tracking-widest mb-4 select-all">{roomId || 'LOADING...'}</div>
+                          <button onClick={copyCode} className="mx-auto flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-full text-xs font-bold text-white transition-colors"><Copy size={14}/> SALIN KODE</button>
+                      </div>
+                      <div className="flex items-center justify-center gap-3 text-zinc-400 text-sm animate-pulse"><Loader className="animate-spin" size={16}/> Menunggu Lawan... ({roomDetails?.players?.length || 1}/{maxPlayers})</div>
+                      <button onClick={handleQuit} className="mt-8 text-rose-500 text-xs font-bold hover:underline">BATALKAN</button>
+                 </div>
+            </div>
+        );
+    }
+
+    const myTeam = appMode === 'online-game' ? getTeam(playerIndex) : 0;
+    const isBlueTeam = myTeam === 0;
+    const opponentTeam = myTeam === 0 ? 1 : 0;
 
     return (
-      <div 
-        className={`relative w-full aspect-square flex items-center justify-center p-0.5 border border-gray-300 cursor-pointer transition-all duration-100 ${isCorner ? 'bg-green-700' : 'bg-white hover:bg-gray-100'}`}
-        onClick={() => onClick(row, col)}
-        title={isCorner ? 'Sudut GRATIS' : getCardName(cardCode)}
-      >
-        {isCorner ? (
-          <span className="text-white font-bold text-xs sm:text-lg">GRATIS</span>
-        ) : (
-          <div className={`text-xs sm:text-lg font-bold ${getSuitColor(cardCode.slice(-1))}`}>
-            {cardCode}
-          </div>
-        )}
-        
-        {isOccupied && (
-          <div className={`absolute inset-0 m-auto w-4/5 h-4/5 flex items-center justify-center rounded-full shadow-lg ${chipColor} ring-2 ${ringColor} transition-transform duration-100 ease-out scale-100`}>
-             <span className="text-white text-xs font-semibold">{teamText}</span>
-          </div>
-        )}
-      </div>
-    );
-  };
+        <div className="min-h-screen bg-felt-pattern text-slate-200 flex flex-col overflow-hidden relative select-none">
+             {showForfeitModal && <ForfeitConfirmationModal onConfirm={confirmForfeitAndQuit} onCancel={() => setShowForfeitModal(false)} />}
+             
+             {/* --- HEADER --- */}
+             <header className="h-14 bg-[#050505]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-4 z-50">
+                  <div className="flex items-center gap-3">
+                      <button 
+                          onClick={handleQuit} 
+                          disabled={showForfeitModal} 
+                          className={`w-8 h-8 rounded-full bg-rose-500/10 flex items-center justify-center text-rose-500 transition-all border border-rose-500/20 z-[60]
+                              ${showForfeitModal ? 'opacity-50 cursor-not-allowed' : 'hover:bg-rose-500/30'}
+                          `}
+                      > 
+                          <X size={14}/>
+                      </button>
+                      <div>
+                          <h1 className="text-sm font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-amber-500 tracking-wider">SEQUENCE</h1>
+                          {appMode === 'online-game' && <div className="text-[10px] font-mono text-zinc-500 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> ROOM: {roomId}</div>}
+                      </div>
+                  </div>
 
-  // Component: Tampilan Tangan Pemain
-  const HandCard = ({ card, index, isSelected, onClick }) => {
-    const cardRank = card.slice(0, -1);
-    const cardSuit = card.slice(-1);
-    
-    // Tangani Jack khusus
-    let cardDisplayName = card;
-    let cardColor = 'text-gray-800';
-    let cardDescription = getCardName(card);
-    let cardIcon = null;
+                  <div className="flex items-center gap-4">
+                      <div className={`px-3 py-1 rounded-full border border-white/10 font-black text-sm tracking-wide flex items-center ${isBlueTeam ? 'bg-blue-900/40 text-blue-300' : 'bg-rose-900/40 text-rose-300'}`}>
+                          <div className="flex items-center gap-1">
+                              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                              <span>{scores[0]}</span>
+                          </div>
+                          <span className="mx-2 text-zinc-500">-</span>
+                          <div className="flex items-center gap-1">
+                              <span>{scores[1]}</span>
+                              <div className="w-2 h-2 rounded-full bg-rose-500"></div>
+                          </div>
+                      </div>
 
-    if (card === 'JS') { // Jack Sekop (1 Mata - Hapus)
-        cardDisplayName = 'J♠'; 
-        cardColor = 'text-red-700';
-        cardDescription = 'Hapus Chip Lawan';
-        cardIcon = <Trash2 size={16} className="mt-1" />;
-    } else if (card === 'JC') { // Jack Keriting (2 Mata - Wildcard)
-        cardDisplayName = 'J♣';
-        cardColor = 'text-green-700';
-        cardDescription = 'Chip Wildcard';
-        cardIcon = <Sparkles size={16} className="mt-1" />;
-    } else {
-        cardColor = getSuitColor(cardSuit);
-        cardIcon = <span className="mt-1">{cardSuit}</span>;
-    }
+                      <div className="flex items-center gap-1 bg-amber-900/30 rounded-full px-3 py-1 border border-amber-500/20">
+                           <Trophy size={12} className="text-amber-500"/>
+                           <span className="text-xs font-bold text-amber-200">TARGET: {WINNING_SCORE}</span>
+                      </div>
 
-    return (
-      <div 
-        className={`relative w-20 sm:w-24 h-32 sm:h-36 flex flex-col items-center justify-between p-2 rounded-lg shadow-xl border-4 ${isSelected ? 'border-yellow-400 bg-yellow-50' : 'border-gray-200 bg-white hover:bg-gray-50'} cursor-pointer transition-all duration-200`}
-        onClick={() => onClick(index)}
-      >
-        <div className={`text-xl font-extrabold ${cardColor}`}>
-          {cardDisplayName}
-        </div>
-        <div className="flex-grow flex items-center justify-center">
-            {cardIcon}
-        </div>
-        <div className="text-xs text-center text-gray-500 mt-1">
-          {cardDescription}
-        </div>
-        {isSelected && (
-            <span className="absolute -top-3 left-1/2 transform -translate-x-1/2 px-2 py-0.5 text-xs font-bold text-white bg-yellow-500 rounded-full shadow-md">
-                DIPILIH
-            </span>
-        )}
-      </div>
-    );
-  };
+                      <div className="flex items-center gap-1 bg-black/40 rounded-full px-3 py-1 border border-white/5">
+                           <Clock size={12} className="text-zinc-500"/>
+                           <span className={`text-xs font-mono font-bold ${timeLeft < 30 ? 'text-rose-500 animate-pulse' : 'text-zinc-300'}`}>{formatTime(timeLeft)}</span>
+                      </div>
+                      <button onClick={cycleSoundMode} className="text-zinc-500 hover:text-amber-400 transition-colors">
+                          {soundMode === 'sound' ? <Volume2 size={18}/> : soundMode === 'vibrate' ? <Smartphone size={18} className="animate-pulse"/> : <VolumeX size={18}/>}
+                      </button>
+                  </div>
+             </header>
 
-  // Main App Renderer
-  return (
-    <div className="min-h-screen bg-gray-50 text-gray-800 font-sans p-2 sm:p-4">
-      {/* HEADER & GLOBAL NOTIFICATIONS */}
-      <header className="flex justify-between items-center mb-4 p-2 bg-white rounded-lg shadow-md">
-        <div className="flex items-center">
-          <Grid3x3 className="text-blue-600 mr-2" size={28} />
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-blue-600">
-            SEQUENCE ONLINE
-          </h1>
-        </div>
-        <div className="flex items-center space-x-2">
-            <button 
-                onClick={() => setIsSoundMuted(!isSoundMuted)} 
-                className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition"
-                title={isSoundMuted ? "Nyalakan Suara" : "Matikan Suara"}
-            >
-                {isSoundMuted ? <VolumeX size={20} /> : <Volume size={20} />}
-            </button>
-            <div className="text-sm font-medium text-gray-500 hidden sm:block">
-                ID: {userId ? userId.substring(0, 8) : 'Memuat...'}
-            </div>
-        </div>
-      </header>
-
-      {/* GLOBAL MESSAGE BOX */}
-      {message && (
-        <div className={`p-3 mb-4 rounded-lg shadow-md flex items-center transition-all duration-300 ${isError ? 'bg-red-100 border-red-400 text-red-700' : 'bg-green-100 border-green-400 text-green-700'}`}>
-          {isError ? <AlertTriangle className="mr-2" size={20} /> : <CheckCircle className="mr-2" size={20} />}
-          <p className="font-medium">{message}</p>
-        </div>
-      )}
-      
-      {/* LOADING STATE */}
-      {isLoading && (
-        <div className="flex flex-col items-center justify-center h-64">
-          <Loader className="animate-spin text-blue-500" size={32} />
-          <p className="mt-4 text-lg font-medium">Memuat...</p>
-        </div>
-      )}
-
-      {/* AUTH ERROR STATE */}
-      {!isLoading && !firebaseInitialized && (
-        <div className="p-6 bg-red-50 border-2 border-red-300 rounded-xl shadow-lg text-center">
-            <WifiOff className="text-red-500 mx-auto mb-3" size={32} />
-            <h2 className="text-xl font-bold text-red-700">Fitur Online Tidak Aktif</h2>
-            <p className="mt-2 text-gray-600">
-                Fitur Multiplayer memerlukan kunci konfigurasi Firebase yang valid. Silakan kunjungi 
-                <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline mx-1 font-semibold">
-                    Firebase Console
-                </a> 
-                untuk membuat proyek dan menempelkan `firebaseConfig` ke dalam file `src/App.jsx`.
-            </p>
-        </div>
-      )}
-
-
-      {/* SCREEN RENDERER */}
-      {!isLoading && firebaseInitialized && isAuthReady && (
-        <main className="bg-white p-4 sm:p-6 rounded-xl shadow-2xl">
-          
-          {/* SCREEN: MENU UTAMA */}
-          {screen === 'menu' && (
-            <div className="flex flex-col items-center justify-center space-y-6">
-              <h2 className="text-3xl font-bold text-gray-700 mb-6">Mulai Game</h2>
-              
-              <div className="w-full max-w-sm space-y-4">
-                <label className="block text-lg font-medium text-gray-700">Nama Panggilan Anda</label>
-                <input
-                  type="text"
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value.substring(0, 15))}
-                  placeholder="Masukkan Nickname"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 text-lg shadow-inner"
-                  maxLength={15}
-                />
-              </div>
-
-              <div className="w-full max-w-sm space-y-4">
-                <button
-                  onClick={createRoom}
-                  className="w-full flex items-center justify-center px-6 py-4 border border-transparent text-xl font-bold rounded-xl shadow-lg text-white bg-blue-600 hover:bg-blue-700 transition duration-150 ease-in-out transform hover:scale-[1.02]"
-                >
-                  <Crown className="mr-3" size={24} /> Buat Ruangan Baru
-                </button>
-
-                <div className="flex items-center space-x-4">
-                  <input
-                    type="text"
-                    value={roomId}
-                    onChange={(e) => setRoomId(e.target.value.toUpperCase())}
-                    placeholder="Kode Ruangan (6 digit)"
-                    className="flex-grow px-4 py-3 border border-gray-300 rounded-xl focus:ring-green-500 focus:border-green-500 text-lg shadow-inner uppercase"
-                    maxLength={6}
-                  />
-                  <button
-                    onClick={joinRoom}
-                    className="w-1/3 px-6 py-3 border border-transparent text-lg font-bold rounded-xl shadow-lg text-white bg-green-600 hover:bg-green-700 transition duration-150 ease-in-out transform hover:scale-[1.02]"
-                  >
-                    <LinkIcon size={20} className="mx-auto" /> Gabung
-                  </button>
-                </div>
-              </div>
-              
-              <div className="mt-8 text-center text-sm text-gray-500 p-4 border-t pt-4">
-                <ShieldOff size={18} className="inline mr-1 text-red-500"/> Aplikasi ini menggunakan otentikasi anonim untuk kemudahan. Jangan gunakan nickname atau informasi pribadi yang sensitif.
-              </div>
-            </div>
-          )}
-
-          {/* SCREEN: LOBBY */}
-          {screen === 'lobby' && roomData && (
-            <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row justify-between items-center border-b pb-4 mb-4">
-                <h2 className="text-3xl font-bold text-blue-600 flex items-center">
-                  <Users className="mr-2" size={30} /> LOBBY: {roomData.id}
-                </h2>
-                <div className="mt-2 sm:mt-0 text-sm font-medium text-gray-500">
-                    Host: {roomData.players.find(p => p.id === roomData.hostId)?.nickname || 'Tidak Dikenal'}
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                {/* Panel Pemain */}
-                <div className="bg-gray-50 p-4 rounded-xl shadow-inner border">
-                  <h3 className="text-xl font-semibold mb-3 border-b pb-2 flex items-center text-gray-700">
-                    <User size={20} className="mr-2"/> Daftar Pemain ({roomData.players.length}/4)
-                  </h3>
-                  <ul className="space-y-2">
-                    {roomData.players.map((player) => (
-                      <li key={player.id} className={`p-2 rounded-lg flex justify-between items-center ${player.id === userId ? 'bg-yellow-100 font-bold' : 'bg-white'}`}>
-                        <div className="flex items-center">
-                            {player.id === roomData.hostId && <Crown size={18} className="text-yellow-500 mr-2" title="Host"/>}
-                            {player.id === userId && <span className="text-blue-500 mr-2">(Anda)</span>}
-                            <span>{player.nickname}</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                            <span className={`text-sm font-bold p-1 rounded ${player.team === 1 ? 'bg-blue-600 text-white' : 'bg-red-600 text-white'}`}>
-                                TEAM {player.team}
-                            </span>
-                            {player.isReady ? (
-                                <span className="text-green-500 font-bold flex items-center"><CheckCircle size={16} className="mr-1"/> Siap</span>
-                            ) : (
-                                <span className="text-red-500 font-bold flex items-center"><Clock size={16} className="mr-1"/> Belum Siap</span>
-                            )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                
-                {/* Panel Aksi & Status */}
-                <div className="space-y-4">
-                  {/* Tombol Ready/Unready */}
-                  <button
-                    onClick={toggleReady}
-                    className={`w-full py-3 text-lg font-bold rounded-xl shadow-md transition duration-150 ${
-                        roomData.players.find(p => p.id === userId)?.isReady 
-                        ? 'bg-yellow-500 hover:bg-yellow-600 text-white flex items-center justify-center' 
-                        : 'bg-green-600 hover:bg-green-700 text-white flex items-center justify-center'
-                    }`}
-                    disabled={roomData.status !== 'pending'}
-                  >
-                    {roomData.players.find(p => p.id === userId)?.isReady ? (
-                        <span className="flex items-center"><RefreshCw size={20} className="mr-2"/> Batalkan Siap</span>
-                    ) : (
-                        <span className="flex items-center"><CheckCircle size={20} className="mr-2"/> Saya Siap Bermain</span>
-                    )}
-                  </button>
+             {/* --- MAIN BOARD AREA --- */}
+             <main className="flex-grow relative flex items-center justify-center p-1 overflow-hidden">
+                  <OpponentPlayedCard card={visualPlayedCard} />
                   
-                  {/* Tombol Start Game (Hanya Host) */}
-                  {roomData.hostId === userId && (
-                    <button
-                      onClick={startGame}
-                      className="w-full py-3 text-lg font-bold rounded-xl shadow-md text-white bg-purple-600 hover:bg-purple-700 transition duration-150 flex items-center justify-center"
-                      disabled={roomData.players.length < 2 || roomData.players.some(p => !p.isReady)}
-                    >
-                      <Zap size={20} className="mr-2"/> Mulai Game Sekarang
-                    </button>
-                  )}
-                  
-                  {/* Tombol Hapus Ruangan (Hanya Host) */}
-                  {roomData.hostId === userId && (
-                    <button
-                      onClick={deleteRoom}
-                      className="w-full py-3 text-sm font-bold rounded-xl shadow-md text-red-700 bg-red-100 hover:bg-red-200 transition duration-150 flex items-center justify-center mt-4"
-                    >
-                      <Trash2 size={16} className="mr-2"/> Hapus Ruangan
-                    </button>
-                  )}
-                </div>
-              </div>
-              
-              <div className="mt-6 p-4 bg-blue-50 rounded-xl border border-blue-200">
-                <Info size={18} className="inline mr-1 text-blue-500"/>
-                **Kode Ruangan Anda:** <span className="font-extrabold text-blue-800 text-xl">{roomData.id}</span>
-                <p className="text-sm text-gray-600 mt-1">Bagikan kode ini ke teman Anda agar bisa bergabung. Minimal 2 pemain untuk memulai.</p>
-              </div>
-              
-            </div>
-          )}
+                  <div className="relative z-10 w-full max-w-[98vmin] aspect-square bg-[#1e293b] p-[2px] rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-white/10">
+                       <div className="w-full h-full grid grid-cols-10 gap-[1px] bg-[#0f172a] border border-white/5 relative">
+                            {/* SVG LAYER UNTUK GARIS KEMENANGAN (NYATA & TEBAL) */}
+                            {/* NOTE: Koordinat (r, c) di sini adalah 0-9 untuk baris dan kolom. */}
+                            <svg className="absolute inset-0 w-full h-full pointer-events-none z-40">
+                                {winningLines.map((lineObj, idx) => {
+                                    const start = lineObj.line[0];
+                                    const end = lineObj.line[4];
+                                    // Koordinat pusat cell (dalam %)
+                                    // PENTING: Untuk memastikan garis berhenti TEPAT di pusat chip ke-5, kita perlu memastikan
+                                    // lineObj.line selalu memiliki 5 poin. CheckNewSequences sudah menjamin ini.
+                                    const x1 = start.c * 10 + 5;
+                                    const y1 = start.r * 10 + 5;
+                                    const x2 = end.c * 10 + 5;
+                                    const y2 = end.r * 10 + 5;
+                                    
+                                    const color = lineObj.team === 0 ? '#3b82f6' : '#f43f5e'; // Biru atau Merah
+                                    
+                                    return (
+                                        <line 
+                                            key={idx}
+                                            x1={`${x1}%`} y1={`${y1}%`}
+                                            x2={`${x2}%`} y2={`${y2}%`}
+                                            stroke={color}
+                                            strokeWidth="3.5%"  /* LEBIH TEBAL LAGI */
+                                            strokeLinecap="round"
+                                            strokeOpacity="1"
+                                            className="winning-line"
+                                        />
+                                    );
+                                })}
+                            </svg>
 
-          {/* SCREEN: GAME BERLANGSUNG */}
-          {screen === 'game' && roomData && (
-            <div className="flex flex-col lg:flex-row gap-6">
-                
-                {/* Panel Kiri: Papan Game */}
-                <div className="w-full lg:w-3/4">
-                    <h2 className="text-2xl font-bold mb-4 flex items-center text-gray-700">
-                        <Grid3x3 className="mr-2" size={24}/> Papan Sequence
-                    </h2>
-                    
-                    {/* Status Score Board */}
-                    <div className="flex justify-around mb-4 p-3 rounded-xl shadow-md font-extrabold text-white">
-                        <div className="p-2 w-1/2 text-center bg-blue-600 rounded-l-lg flex flex-col items-center justify-center">
-                           <span className="text-lg sm:text-2xl"><Layers size={20} className="inline mr-2"/> Tim 1</span>
-                           <span className="text-3xl sm:text-4xl">{roomData.teams[1]?.score || 0}</span>
-                        </div>
-                        <div className="p-2 w-1/2 text-center bg-red-600 rounded-r-lg flex flex-col items-center justify-center">
-                           <span className="text-lg sm:text-2xl"><Layers size={20} className="inline mr-2"/> Tim 2</span>
-                           <span className="text-3xl sm:text-4xl">{roomData.teams[2]?.score || 0}</span>
-                        </div>
-                    </div>
-                    
-                    {/* Status Giliran */}
-                    <div className={`p-3 mb-4 rounded-xl shadow-lg font-bold text-center border-4 ${currentTurn === userId ? 'bg-yellow-100 border-yellow-500' : 'bg-gray-100 border-gray-300'}`}>
-                        {currentTurn === userId ? (
-                            <span className="text-xl text-yellow-700 flex items-center justify-center"><Brain size={24} className="mr-2"/> GILIRAN ANDA!</span>
-                        ) : (
-                            <span className="text-lg text-gray-700 flex items-center justify-center"><Clock size={24} className="mr-2"/> Giliran {roomData.players.find(p => p.id === currentTurn)?.nickname || 'Pemain Lain'}</span>
-                        )}
-                    </div>
-                    
-                    {/* Papan Game */}
-                    <div className="grid grid-cols-10 gap-0.5 max-w-full mx-auto" style={{ aspectRatio: '1 / 1' }}>
-                        {Array.from({ length: 10 }).map((_, r) =>
-                            Array.from({ length: 10 }).map((_, c) => (
-                                <BoardCell
-                                    key={`${r},${c}`}
-                                    row={r}
-                                    col={c}
-                                    content={REAL_BOARD_PATTERN[`${r},${c}`]}
-                                    chipData={boardState[`${r},${c}`]}
-                                    onClick={handleBoardClick}
-                                />
-                            ))
-                        )}
-                    </div>
-                </div>
+                            {board.map((row, r) => row.map((cell, c) => {
+                                const isLast = lastMove && lastMove.r === r && lastMove.c === c;
+                                let isHighlight = false;
+                                if (selectedCardIdx !== null) {
+                                    const card = hands[appMode==='online-game'?playerIndex:turn]?.[selectedCardIdx];
+                                    if (card) {
+                                        if (cell.chip === null) {
+                                            if (isTwoEyedJack(card.rank, card.suit)) {
+                                                isHighlight = cell.type !== 'corner'; 
+                                            } else if (cell.rank === card.rank && cell.suit === card.suit) {
+                                                isHighlight = true; 
+                                            }
+                                        } else if (isOneEyedJack(card.rank, card.suit) && getTeam(cell.chip) !== myTeam && !cell.locked) {
+                                            isHighlight = true; 
+                                        }
+                                    }
+                                }
+                                const isWinningChipForCell = winningChipSet.has(cell.id);
+                                const isError = errorCell && errorCell.r === r && errorCell.c === c;
+                                const isAnimatingOut = animatingOutCells.has(`${r},${c}`);
 
-                {/* Panel Kanan: Tangan & Log */}
-                <div className="w-full lg:w-1/4 space-y-6">
-                    {/* Tangan Pemain */}
-                    <div className="bg-gray-50 p-4 rounded-xl shadow-inner border">
-                        <h3 className="text-xl font-semibold mb-3 border-b pb-2 flex items-center text-gray-700">
-                            <Smartphone size={20} className="mr-2"/> Tangan Anda
-                        </h3>
-                        <div className="flex flex-wrap gap-2 justify-center">
-                            {hand.map((card, index) => (
-                                <HandCard
-                                    key={index}
-                                    card={card}
-                                    index={index}
-                                    isSelected={selectedCardIndex === index}
-                                    onClick={setSelectedCardIndex}
+                                return (
+                                    <BoardCell 
+                                        key={cell.id} 
+                                        cell={cell} 
+                                        isLast={isLast}
+                                        lastMoveType={lastMove?.type}
+                                        isHighlight={isHighlight}
+                                        isOccupiedError={isError}
+                                        animatingOut={isAnimatingOut}
+                                        onClick={handleBoardClick}
+                                        isWinningChip={isWinningChipForCell} 
+                                    />
+                                );
+                            }))}
+                       </div>
+                  </div>
+             </main>
+
+             {/* --- BOTTOM HUD --- */}
+             <footer className="relative z-50 pb-safe">
+                  <div className="h-6 bg-gradient-to-r from-transparent via-black/80 to-transparent flex items-center justify-center pointer-events-none">
+                      <p className="text-[10px] font-bold text-amber-100 drop-shadow-md tracking-wide animate-pulse">{message}</p>
+                  </div>
+
+                  <div className="bg-[#0f172a]/95 backdrop-blur-xl border-t border-white/10 pt-3 pb-4 px-2 flex flex-col items-center shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+                       <div className="flex gap-2 overflow-x-auto max-w-full scrollbar-hide px-2 py-1 snap-x">
+                            {(hands[appMode === 'online-game' ? playerIndex : 0] || []).map((card, i) => (
+                                <HandCard 
+                                    key={i} 
+                                    card={card} 
+                                    selected={selectedCardIdx === i} 
+                                    disabled={winner !== null || (appMode==='online-game' && turn !== playerIndex)}
+                                    onClick={() => { 
+                                        if (appMode === 'offline-bot' && turn !== 0) return;
+                                        if(winner===null && (appMode!=='online-game' || turn===playerIndex)) { 
+                                            playEffect('move'); setSelectedCardIdx(selectedCardIdx === i ? null : i); 
+                                        } 
+                                    }}
                                 />
                             ))}
-                        </div>
-                    </div>
-                    
-                    {/* Log Game */}
-                    <div className="bg-gray-50 p-4 rounded-xl shadow-inner border max-h-96 overflow-y-auto">
-                        <h3 className="text-xl font-semibold mb-3 border-b pb-2 flex items-center text-gray-700">
-                            <BookOpen size={20} className="mr-2"/> Log Aktivitas
-                        </h3>
-                        <ul className="space-y-1 text-sm">
-                            {roomData.log && [...roomData.log].reverse().slice(0, 10).map((entry, index) => (
-                                <li key={index} className={`p-1 rounded ${entry.type === 'START' ? 'bg-purple-100 font-bold' : ''}`}>
-                                    {entry.type === 'START' && <span className="text-purple-700">[GAME] Game dimulai.</span>}
-                                    {entry.type === 'MOVE' && (
-                                        <span className="text-gray-700">
-                                            **{entry.player}** {entry.action === 'place' ? 'menempatkan chip' : 'menghapus chip'} dengan **{entry.card}**
-                                        </span>
-                                    )}
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                    
-                    {/* Tombol Keluar */}
-                    <button
-                        onClick={() => { if (window.confirm("Apakah Anda yakin ingin keluar? Game ini akan berlanjut tanpa Anda.")) setScreen('menu'); }}
-                        className="w-full py-2 text-sm font-bold rounded-xl text-gray-500 bg-gray-100 hover:bg-gray-200 transition duration-150 flex items-center justify-center"
-                    >
-                        <LogOut size={16} className="mr-2"/> Keluar dari Game
-                    </button>
-                </div>
-            </div>
-          )}
-        </main>
-      )}
+                       </div>
+                       
+                       <div className="absolute top-0 -translate-y-1/2 flex gap-4">
+                            <div className={`px-4 py-1 rounded-full border-2 shadow-lg font-black text-xs tracking-wider flex items-center gap-2 bg-[#0f172a] ${isBlueTeam ? 'border-blue-500 text-blue-400 scale-110 z-10' : 'border-rose-500 text-rose-400 scale-110 z-10'}`}>
+                                 <div className={`w-2 h-2 rounded-full ${isBlueTeam ? 'bg-blue-500' : 'bg-rose-500'}`}></div>
+                                 {isBlueTeam ? 'TIM BIRU' : 'TIM MERAH'}: {scores[myTeam]}
+                            </div>
+                            <button onClick={()=>{setShowChat(!showChat); setUnreadCount(0);}} className="w-8 h-8 rounded-full bg-amber-600 border border-white/20 shadow-lg flex items-center justify-center text-white hover:scale-110 transition-transform">
+                                <MessageCircle size={16} />
+                                {unreadCount > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-[8px] flex items-center justify-center">{unreadCount}</span>}
+                            </button>
+                       </div>
+                  </div>
+             </footer>
 
-      {/* FOOTER */}
-      <footer className="mt-8 text-center text-sm text-gray-500">
-        <p>Dibuat dengan React, Tailwind CSS, dan Firebase Firestore (Spark Plan Gratis).</p>
-        <p>Aplikasi ini hanya untuk tujuan edukasi dan hiburan. Kode Game: {APP_ID}</p>
-      </footer>
-    </div>
-  );
-};
+             <ChatOverlay 
+                isOpen={showChat} 
+                onClose={()=>setShowChat(false)} 
+                chats={chats} 
+                onSend={handleSendChat}
+                myName={playerName}
+             />
 
-// Final Export Wrapper
-export default function SequenceGame() { 
+             {toast && (
+                 <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[100] animate-drop-in">
+                     <div className={`px-6 py-3 rounded-full shadow-2xl border flex items-center gap-3 backdrop-blur-md ${toast.type==='error' ? 'bg-rose-900/80 border-rose-500/50 text-white' : 'bg-emerald-900/80 border-emerald-500/50 text-white'}`}>
+                         {toast.type==='error' ? <AlertOctagon size={18}/> : <CheckCircle size={18}/>}
+                         <span className="text-xs font-bold tracking-wide">{toast.text}</span>
+                     </div>
+                 </div>
+             )}
+
+             {/* Tampilan Game Over - Muncul setelah jeda */}
+             {showGameOverModal && (
+                 <div className="fixed inset-0 z-[1000] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in overflow-hidden">
+                      {[...Array(20)].map((_, i) => (
+                          <div key={i} className="confetti" style={{ left: `${Math.random()*100}%`, animationDelay: `${Math.random()*2}s`, backgroundColor: Math.random()>0.5 ? '#3b82f6' : '#f43f5e' }}></div>
+                      ))}
+                      
+                      <div className="bg-[#0a0a0a] border border-white/10 p-1 rounded-3xl shadow-[0_0_100px_rgba(251,191,36,0.2)] max-w-sm w-full transform scale-110 relative z-10">
+                           <div className="bg-gradient-to-b from-zinc-900 to-black rounded-[20px] p-8 flex flex-col items-center text-center relative overflow-hidden">
+                                <div className={`absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] ${winner === 0 ? 'from-blue-500 via-transparent to-transparent' : 'from-rose-500 via-transparent to-transparent'}`}></div>
+
+                                <Crown size={80} className={`mb-6 drop-shadow-[0_0_30px_rgba(255,255,255,0.4)] ${winner===0 ? 'text-blue-400' : 'text-rose-400'} animate-bounce`} />
+                                
+                                <h2 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-zinc-400 mb-2 tracking-tighter">VICTORY!</h2>
+                                <p className={`text-xl font-bold tracking-[0.2em] mb-8 ${winner===0 ? 'text-blue-500' : 'text-rose-500'}`}>
+                                    {winner === 0 ? "TIM BIRU MENANG" : "TIM MERAH MENANG"}
+                                </p>
+                                
+                                <div className="flex gap-8 mb-10 w-full justify-center">
+                                    <div className="text-center">
+                                        <div className="text-xs text-zinc-500 font-bold mb-1">TIM BIRU</div>
+                                        <div className="text-4xl font-black text-blue-500">{scores[0]}</div>
+                                    </div>
+                                    <div className="h-12 w-[1px] bg-zinc-800"></div>
+                                    <div className="text-center">
+                                        <div className="text-xs text-zinc-500 font-bold mb-1">TIM MERAH</div>
+                                        <div className="text-4xl font-black text-rose-500">{scores[1]}</div>
+                                    </div>
+                                </div>
+
+                                <button onClick={() => { resetGameState(); setAppMode('menu'); }} className="w-full py-4 bg-white text-black rounded-xl font-black tracking-widest hover:bg-zinc-200 transition-all hover:scale-105 active:scale-95 shadow-xl">
+                                    KEMBALI KE MENU UTAMA
+                                </button>
+                           </div>
+                      </div>
+                 </div>
+             )}
+        </div>
+    );
+}
+
+export default function SequenceGame() {
   return (
     <ErrorBoundary>
       <SequenceGameInternal />
