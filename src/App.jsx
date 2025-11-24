@@ -15,17 +15,12 @@ import { getFirestore, doc, setDoc, onSnapshot, updateDoc, getDoc, arrayUnion } 
  * ============================================================================
  * KONFIGURASI DEPLOYMENT
  * ============================================================================
+ * * CATATAN PENTING: Untuk deployment ke Netlify/GitHub, Anda HARUS 
+ * MENGISI YOUR_FIREBASE_CONFIG di file OneFile.jsx (jika ada) 
+ * atau di sini jika Anda hanya menggunakan file ini.
+ * Saya mengosongkannya di sini untuk mencegah kebocoran kunci default.
  */
-// **PENTING:** Gunakan konfigurasi Anda di sini jika deployment Anda tidak menggunakan __firebase_config
-const YOUR_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyD_SGGmHMfpShqGirhf_Vr_os_Xv8ddvfQ",
-  authDomain: "sequence-game-ultimate-o-5a7f7.firebaseapp.com",
-  projectId: "sequence-game-ultimate-o-5a7f7",
-  storageBucket: "sequence-game-ultimate-o-5a7f7.firebasestorage.app",
-  messagingSenderId: "906233184320",
-  appId: "1:906233184320:web:22543d29d668a86f641fa5",
-  measurementId: "G-QHL9LRH0RC"
-};
+const YOUR_FIREBASE_CONFIG = null; // Diisi di file OneFile.jsx/Environment Variables
 
 // --- UTILITAS ---
 const safeParse = (jsonString, fallbackValue) => {
@@ -96,15 +91,8 @@ const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'sequence-game-pro
 const appId = rawAppId.replace(/[^a-zA-Z0-9_-]/g, '_'); 
 
 try {
-  if (YOUR_FIREBASE_CONFIG && YOUR_FIREBASE_CONFIG.projectId) {
-    const firebaseConfig = YOUR_FIREBASE_CONFIG;
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
-    isOnlineAvailable = true;
-    isCustomConfig = true;
-  } 
-  else if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+  // Cek jika menggunakan konfigurasi Canvas/Environment
+  if (typeof __firebase_config !== 'undefined' && __firebase_config) {
     const firebaseConfig = JSON.parse(__firebase_config);
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
@@ -112,6 +100,15 @@ try {
     isOnlineAvailable = true;
     isCustomConfig = false;
   }
+  // Cek jika menggunakan konfigurasi statis (seperti di Netlify/GitHub)
+  else if (YOUR_FIREBASE_CONFIG && YOUR_FIREBASE_CONFIG.projectId) {
+    const firebaseConfig = YOUR_FIREBASE_CONFIG;
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+    isOnlineAvailable = true;
+    isCustomConfig = true;
+  } 
 } catch (e) { console.error("Firebase Init Error:", e); }
 
 // --- DATA PAPAN ---
@@ -159,15 +156,16 @@ const formatTime = (seconds) => {
     if (isNaN(seconds) || seconds < 0) return "0:00";
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
-    // HANYA tampilkan MM:SS (tidak ada tulisan jam)
+    // Format selalu M:SS
     return `${minutes.toString().padStart(1, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
 
 const generateNumericId = () => Math.floor(100000 + Math.random() * 900000).toString();
 
 const getRoomRef = (roomIdStr) => {
-    // Memastikan path yang benar digunakan berdasarkan konfigurasi
-    if (isCustomConfig) return doc(db, 'rooms', roomIdStr);
+    // Gunakan koleksi 'rooms' jika menggunakan konfigurasi statis/kustom (Netlify/GitHub)
+    if (isCustomConfig || typeof __firebase_config === 'undefined') return doc(db, 'rooms', roomIdStr);
+    // Gunakan jalur Canvas jika menggunakan variabel __app_id
     return doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomIdStr);
 };
 
@@ -232,7 +230,8 @@ const OpponentPlayedCard = ({ card }) => {
     if (!card) return null;
     const imgUrl = getCardImageUrl(card.rank, card.suit);
     return (
-        <div className="absolute top-[25%] right-[10%] z-[100] pointer-events-none" style={{ perspective: '1000px' }}>
+        // Diposisikan ulang agar tidak menutupi papan besar
+        <div className="absolute top-[20%] right-[30%] z-[100] pointer-events-none" style={{ perspective: '1000px' }}>
             <div className="w-24 sm:w-32 aspect-[2/3] bg-white rounded-xl shadow-[0_0_30px_rgba(0,0,0,0.5)] border-2 border-amber-400 origin-center animate-opponent-play">
                  <img src={imgUrl} className="w-full h-full object-contain p-1" alt="" />
                  <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-4 py-1 rounded-full text-[10px] font-black tracking-widest whitespace-nowrap border border-white/20 shadow-lg">
@@ -301,7 +300,7 @@ const ChatOverlay = ({ isOpen, onClose, chats, onSend, myName }) => {
 
     return (
         // Posisikan di sudut kanan atas area permainan, menjauh dari hand card
-        <div className="absolute top-1/2 right-4 -translate-y-1/2 z-[90] w-72 h-80 bg-[#1e293b]/95 backdrop-blur-md border border-white/10 rounded-2xl flex flex-col shadow-2xl animate-drop-in origin-right">
+        <div className="fixed top-1/2 right-4 -translate-y-1/2 z-[90] w-72 h-80 bg-[#1e293b]/95 backdrop-blur-md border border-white/10 rounded-2xl flex flex-col shadow-2xl animate-drop-in origin-right">
             <div className="p-3 border-b border-white/5 flex justify-between items-center bg-black/20 rounded-t-2xl">
                 <span className="text-xs font-bold text-amber-500 flex items-center gap-2"><MessageCircle size={14}/> LIVE CHAT</span>
                 <button onClick={onClose}><X size={16} className="text-zinc-500 hover:text-white"/></button>
@@ -405,10 +404,13 @@ const HandCard = React.memo(({ card, selected, disabled, onClick }) => {
         if (isTwoEyedJack(card.rank, card.suit)) { label = "WILD"; labelColor = "bg-emerald-600"; } 
         else { label = "BUANG"; labelColor = "bg-rose-600"; }
     }
+    // Ukuran kartu di HP: Lebih kecil, tetapi cukup besar untuk disentuh.
+    const cardSizeClass = "w-14 sm:w-16 lg:w-20"; 
+    
     return (
-        <div onClick={onClick} className={`relative w-14 sm:w-16 lg:w-24 aspect-[2/3] flex-shrink-0 bg-white rounded-lg shadow-lg border border-slate-200 cursor-pointer transition-all select-none duration-200 transform will-change-transform
-            ${selected ? '-translate-y-6 ring-2 ring-amber-400 z-30 shadow-[0_0_25px_rgba(251,191,36,0.5)] scale-110' : ''} 
-            ${disabled ? 'opacity-50 grayscale brightness-90 cursor-not-allowed' : 'hover:-translate-y-3 hover:shadow-xl hover:brightness-105'}
+        <div onClick={onClick} className={`relative ${cardSizeClass} aspect-[2/3] flex-shrink-0 bg-white rounded-lg shadow-lg border border-slate-200 cursor-pointer transition-all select-none duration-200 transform will-change-transform
+            ${selected ? '-translate-y-2 sm:-translate-y-6 ring-2 ring-amber-400 z-30 shadow-[0_0_25px_rgba(251,191,36,0.5)] scale-110' : ''} 
+            ${disabled ? 'opacity-50 grayscale brightness-90 cursor-not-allowed' : 'hover:-translate-y-1 sm:hover:-translate-y-3 hover:shadow-xl hover:brightness-105'}
         `}>
             <img src={imgUrl} onError={(e)=>e.target.src=''} className="w-full h-full object-contain p-1 rounded-lg" loading="lazy" alt="" />
             {label && <div className={`absolute -top-2 left-1/2 -translate-x-1/2 px-2 py-[2px] text-[7px] font-black text-white tracking-wider text-center rounded-full ${labelColor} shadow-md whitespace-nowrap z-10 border border-white/50`}>{label}</div>}
@@ -659,9 +661,9 @@ function SequenceGameInternal() {
     const [visualPlayedCard, setVisualPlayedCard] = useState(null);
     const [consecutiveTimeouts, setConsecutiveTimeouts] = useState(0); // Tracking skip berturut-turut
     
-    const [showInfoModal, setShowInfoModal] = useState(false); // Ganti showGuideModal menjadi showInfoModal
+    const [showInfoModal, setShowInfoModal] = useState(false); 
     const [showBotSelectModal, setShowBotSelectModal] = useState(false);
-    const [showProfileModal, setShowProfileModal] = useState(false); // State untuk Profile Modal
+    const [showProfileModal, setShowProfileModal] = useState(false); 
     const [animatingOutCells, setAnimatingOutCells] = new useState(new Set()); 
 
     const audioCtxRef = useRef(null);
@@ -741,9 +743,18 @@ function SequenceGameInternal() {
         const init = async () => {
             if (isOnlineAvailable && auth) {
                 try { 
-                    if (isCustomConfig) await signInAnonymously(auth);
-                    else if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token); 
-                    else await signInAnonymously(auth); 
+                    if (isCustomConfig || typeof __firebase_config === 'undefined') {
+                        // Jika menggunakan konfigurasi statis (Netlify), sign-in anonymous.
+                        await signInAnonymously(auth);
+                    }
+                    else if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        // Jika di Canvas, gunakan token kustom
+                        await signInWithCustomToken(auth, __initial_auth_token); 
+                    }
+                    else {
+                        // Fallback aman untuk Canvas
+                        await signInAnonymously(auth); 
+                    }
                 } catch (e) { console.error("Auth Sign-In Error (Initial):", e); }
             } else {
                  // Fallback untuk mode offline/dev tanpa Firebase
@@ -891,7 +902,8 @@ function SequenceGameInternal() {
 
     // --- SYNC ---
     useEffect(() => {
-        if (appMode !== 'online-game' && appMode !== 'online-share' || !roomId || !user) return;
+        if (!isOnlineAvailable || (appMode !== 'online-game' && appMode !== 'online-share') || !roomId || !user) return;
+        
         const unsub = onSnapshot(getRoomRef(roomId), (snap) => {
             if (snap.exists()) {
                 const data = snap.data(); 
@@ -1080,7 +1092,7 @@ function SequenceGameInternal() {
                 // KUNCI CHIP (LOCK) PERMANEN
                 newLines.forEach(line => line.forEach(p => { 
                     if(newBoard[p.r][p.c].type !== 'corner') {
-                        newBoard[p.r][p.c].locked = true; 
+                        newBoard[p.r][c].locked = true; 
                     }
                 }));
                 
@@ -1416,7 +1428,6 @@ function SequenceGameInternal() {
 
     if (appMode === 'dealing') return <div className="min-h-screen bg-[#050505] flex items-center justify-center relative overflow-hidden"><DealingOverlay onComplete={()=>{resetGameState(); setAppMode('menu'); setIsDealing(false);}}/></div>;
 
-    // FIX: Deklarasikan myAvatar di sini agar dapat diakses oleh semua blok render
     const myAvatar = playerAvatar || ALL_AVATARS[0].icon;
 
     if (appMode === 'menu') {
@@ -1443,13 +1454,8 @@ function SequenceGameInternal() {
                                <Aperture size={14}/> INFO GAME
                            </h3>
                            <p className="text-[10px] text-zinc-300 italic">Susun 3 baris berisi 5 chip tim Anda untuk menang! Gunakan Jack dengan bijak.</p>
-                           {/* Diganti ke tombol Informasi Game baru di bawah */}
-                           {/* <button onClick={() => setShowInfoModal(true)} className="mt-2 text-blue-400 text-xs font-bold hover:underline relative z-20">Lihat Panduan Lengkap</button> */}
                       </div>
                       
-                      {/* --- DEBUG/TEST CLICK BUTTON (REMOVED) --- */}
-                      
-
                       <LogoFourCards />
                       <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-amber-300 to-amber-600 mb-6 tracking-tight">SEQUENCE</h1>
                       
@@ -1469,7 +1475,6 @@ function SequenceGameInternal() {
 
                       <div className="space-y-4">
                            <div className="grid grid-cols-2 gap-3 pt-2">
-                                {/* Tambahkan z-index pada tombol utama untuk memastikannya berada di atas */}
                                 <button onClick={()=>setShowBotSelectModal(true)} className="relative z-20 bg-gradient-to-br from-indigo-600 to-indigo-800 hover:from-indigo-500 hover:to-indigo-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-900/30 flex flex-col items-center gap-2 transition-all hover:scale-[1.02] border border-white/10"><Bot size={24} /> VS Robot</button>
                                 <button onClick={()=>setAppMode('online-setup')} className="relative z-20 bg-gradient-to-br from-rose-600 to-rose-800 hover:from-rose-500 hover:to-rose-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-rose-900/30 flex flex-col items-center gap-2 transition-all hover:scale-[1.02] border border-white/10"><Users size={24} /> Online</button>
                            </div>
@@ -1535,18 +1540,59 @@ function SequenceGameInternal() {
     const opponentTeam = myTeam === 0 ? 1 : 0;
     const isMyTurn = (appMode === 'offline-bot' && turn === 0) || (appMode === 'online-game' && turn === playerIndex);
     const timeDisplay = formatTime(timeLeft);
-    const currentTimerColor = timeLeft < 30 ? 'text-rose-500' : 'text-amber-300';
+    const [minutes, seconds] = timeDisplay.split(':').map(n => n.includes(':') ? n.split(':')[1] : n);
 
-    const SidePanelItem = ({ title, value, icon: Icon, colorClass, size = 16, timeUnit = false, showIfTurn = false }) => {
-        if (showIfTurn && !isMyTurn) return null;
+    const currentTimerColor = timeLeft < 30 ? 'text-rose-500' : 'text-amber-300';
+    
+    // --- KOMPONEN BARU: Utility Button ---
+    const UtilityButton = ({ icon: Icon, onClick, title, colorClass, size = 18, isSelected = false }) => (
+        <button 
+            onClick={onClick} 
+            title={title}
+            className={`w-10 h-10 flex items-center justify-center rounded-full shadow-lg transition-all 
+                ${isSelected 
+                    ? `bg-amber-600 ${colorClass.replace('text', 'border')} border-2 text-white scale-110` 
+                    : `bg-zinc-800/80 ${colorClass} hover:bg-zinc-700/80`}
+            `}
+        >
+            <Icon size={size} className={isSelected ? 'text-white' : ''}/>
+        </button>
+    );
+
+    // --- KOMPONEN BARU: Score/Timer HUD Panel (Diubah menjadi komponen Header Bar) ---
+    const ScoreHeaderBar = ({ scores, isMyTurn, timeLeft, maxScore, turn, myIndex, opponentTeam }) => {
+        const timeDisplayFormatted = formatTime(timeLeft);
+        const [mins, secs] = timeDisplayFormatted.split(':');
+        const currentTimerColor = timeLeft < 30 ? 'text-rose-500' : 'text-amber-300';
+        
+        const isBlue = myIndex % 2 === 0;
+
         return (
-            // Panel HUD: Menggunakan warna yang lebih cerah
-            <div className={`flex items-center justify-between px-3 py-2 rounded-lg border-2 bg-[#1A538A]/70 shadow-lg ${colorClass}`}>
-                <div className="flex items-center gap-2">
-                    <Icon size={size} className={colorClass.includes('text-white') ? '' : colorClass.replace('border-', 'text-')} />
-                    <span className="text-[10px] font-bold uppercase text-zinc-400">{title}</span>
+            <div className="flex items-center justify-between px-3 py-1 bg-[#0E3355]/80 border-b border-white/5 shadow-inner">
+                {/* Score Saya (Tim Biru/Merah) */}
+                <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold transition-all ${isBlue ? 'bg-blue-900/40 text-blue-400' : 'bg-rose-900/40 text-rose-400'}`}>
+                    <Trophy size={14} />
+                    <span className="hidden sm:inline">SKOR SAYA:</span> {scores[isBlue ? 0 : 1]} / {maxScore}
                 </div>
-                <span className={`text-xl font-black ${timeUnit ? 'font-mono' : 'text-white'}`}>{value}</span>
+
+                {/* Timer (Tengah) */}
+                <div className="flex items-center gap-1">
+                    <Clock size={16} className={currentTimerColor}/>
+                    <div className="text-sm font-mono font-black tracking-wider">
+                       {isMyTurn ? mins : '5'}
+                       <span className="text-xs font-normal">:</span>
+                       {isMyTurn ? secs : '00'}
+                    </div>
+                    <span className="text-xs text-zinc-400 hidden sm:inline-block">({turn + 1})</span>
+                </div>
+                
+                {/* Score Lawan & Tombol Chat */}
+                <div className="flex items-center gap-2">
+                    <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold ${isBlue ? 'bg-rose-900/40 text-rose-400' : 'bg-blue-900/40 text-blue-400'}`}>
+                        <Users size={14} />
+                        <span className="hidden sm:inline">LAWAN:</span> {scores[isBlue ? 1 : 0]}
+                    </div>
+                </div>
             </div>
         );
     };
@@ -1568,54 +1614,103 @@ function SequenceGameInternal() {
                       > 
                           <X size={14}/>
                       </button>
-                      <div>
-                          <h1 className="text-sm font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-amber-500 tracking-wider">SEQUENCE ULTIMATE</h1>
-                      </div>
+                      <h1 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-amber-500 tracking-wider">SEQUENCE ULTIMATE</h1>
                   </div>
 
                   <div className="flex items-center gap-4">
-                      {/* Konter Timeouts */}
-                      <div className={`flex items-center gap-1 bg-rose-900/30 rounded-full px-3 py-1 border border-rose-500/20 ${consecutiveTimeouts > 0 ? 'visible' : 'hidden'}`}>
-                           <AlertOctagon size={12} className="text-rose-400"/>
-                           <span className="text-xs font-bold text-rose-300">SKIP: {consecutiveTimeouts}/2</span>
-                      </div>
-                      <button onClick={cycleSoundMode} className="text-zinc-500 hover:text-amber-400 transition-colors">
-                          {soundMode === 'sound' ? <Volume2 size={18}/> : soundMode === 'vibrate' ? <Smartphone size={18} className="animate-pulse"/> : <VolumeX size={18}/>}
-                      </button>
+                        <button onClick={cycleSoundMode} className="text-zinc-500 hover:text-amber-400 transition-colors">
+                            {soundMode === 'sound' ? <Volume2 size={18}/> : soundMode === 'vibrate' ? <Smartphone size={18} className="animate-pulse"/> : <VolumeX size={18}/>}
+                        </button>
+                        <button onClick={()=>{setShowChat(!showChat); setUnreadCount(0);}} className="w-8 h-8 rounded-full bg-amber-600 border border-white/20 shadow-lg flex items-center justify-center text-white hover:scale-110 transition-transform">
+                            <MessageCircle size={16} />
+                            {unreadCount > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-[8px] flex items-center justify-center">{unreadCount}</span>}
+                        </button>
                   </div>
              </header>
 
-             {/* --- MAIN BOARD AREA - Menggunakan grid untuk layout responsif --- */}
-             <main className="flex-grow relative flex items-center justify-center p-1 overflow-hidden">
+             {/* --- SCORE BAR DI BAWAH HEADER (KHUSUS HP/MOBILE) --- */}
+             <div className="md:hidden sticky top-14 z-40">
+                 <ScoreHeaderBar 
+                      scores={scores} 
+                      isMyTurn={isMyTurn} 
+                      timeLeft={timeLeft} 
+                      maxScore={WINNING_SCORE}
+                      turn={turn}
+                      myIndex={playerIndex === null ? 0 : playerIndex}
+                      opponentTeam={opponentTeam}
+                 />
+             </div>
+
+             {/* --- MAIN BOARD AREA - Layout Flex untuk Mobile/Desktop --- */}
+             <main className="flex-grow relative flex items-center justify-center p-2 sm:p-4 overflow-hidden">
                   <OpponentPlayedCard card={visualPlayedCard} />
                   
-                  <div className="grid grid-cols-1 md:grid-cols-[auto_1fr_auto] h-full w-full max-w-[1200px] gap-2 md:gap-4 p-2">
+                  {/* Container Utama: Flex column di mobile, flex row di desktop */}
+                  <div className="flex flex-col xl:flex-row items-center xl:items-start justify-center w-full max-w-screen-xl gap-4">
                       
-                      {/* --- KIRI: PLAYER INFO / SCORE LAWAN --- */}
-                      <div className="hidden md:flex flex-col justify-start space-y-3 p-2 w-48">
-                          {/* Slot Pemain Lawan (P1/P3 Tim Merah) */}
-                          <div className="bg-rose-900/40 border border-rose-500/30 rounded-xl p-3 shadow-md">
-                              <div className="flex items-center gap-3">
-                                  {/* Avatar Lawan (Emoji) */}
-                                  <div className="flex items-center justify-center w-10 h-10 rounded-full ring-2 ring-rose-400/50 bg-white/10">
-                                      <span className="text-xl" style={{ lineHeight: 1 }}>{playerAvatarsList[opponentTeam] || ALL_AVATARS[0].icon}</span>
-                                  </div>
-                                  <div>
-                                      <p className="text-sm font-bold text-rose-300">{playerNamesList[opponentTeam] || 'Lawan'}</p>
-                                      <p className="text-xs text-zinc-400">Tim Merah</p>
-                                  </div>
-                              </div>
-                              <div className="mt-3 flex justify-between items-center border-t border-rose-500/30 pt-2">
-                                  <span className="text-xs font-bold text-zinc-400">SKOR TIM:</span>
-                                  <span className="text-3xl font-black text-rose-500">{scores[opponentTeam]}</span>
-                              </div>
+                      {/* --- KIRI: UTILITY BUTTONS (Hanya untuk Desktop/Tablet) --- */}
+                      <div className="hidden md:flex flex-col items-center justify-center gap-4 w-52 p-2">
+                           {/* Panel Score/Timer untuk Desktop */}
+                           <div className="bg-[#0e3355]/90 border border-white/10 p-4 rounded-xl shadow-xl w-full max-w-sm">
+                                <div className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 ${isMyTurn ? 'border-amber-500 bg-amber-900/30' : 'border-zinc-700 bg-[#1A538A]/50'} mb-4`}>
+                                     <span className="text-[10px] font-bold uppercase text-zinc-400 block leading-none">DURASI GILIRAN {isMyTurn ? '' : 'LAWN'}</span>
+                                     <div className={`text-3xl font-mono font-black ${currentTimerColor} drop-shadow-md`}>
+                                         {isMyTurn ? minutes : '5'}
+                                         <span className="text-xl font-normal">:</span>
+                                         {isMyTurn ? seconds : '00'}
+                                     </div>
+                                </div>
+                                <div className="flex justify-between items-center mb-4">
+                                     <p className="text-lg font-bold text-white flex items-center gap-2">
+                                         <RotateCcw size={16} className="text-zinc-400"/>
+                                         GILIRAN: <span className="text-amber-300">{turn + 1}</span>
+                                     </p>
+                                     {consecutiveTimeouts > 0 && (
+                                        <div className="flex items-center gap-1 bg-rose-900/30 rounded-full px-2 py-0.5 border border-rose-500/20">
+                                             <AlertOctagon size={10} className="text-rose-400"/>
+                                             <span className="text-[10px] font-bold text-rose-300">SKIP: {consecutiveTimeouts}/2</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="bg-black/30 p-4 rounded-xl border border-white/10">
+                                    <h3 className="text-xs font-bold uppercase text-amber-300 mb-3 tracking-widest flex items-center justify-between">
+                                        <Trophy size={14}/> SKOR (TARGET: {WINNING_SCORE})
+                                    </h3>
+                                    
+                                    <div className="flex justify-between items-center mb-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xl" style={{ lineHeight: 1 }}>{playerAvatarsList[playerIndex % 2] || ALL_AVATARS[0].icon}</span>
+                                            <span className={`text-sm font-bold ${playerIndex % 2 === 0 ? 'text-blue-400' : 'text-rose-400'}`}>{playerNamesList[playerIndex % 2] || 'SAYA'}</span>
+                                        </div>
+                                        <span className="text-3xl font-black text-white">{scores[playerIndex % 2]}</span>
+                                    </div>
+
+                                    <div className="flex justify-between items-center border-t border-zinc-700 pt-2">
+                                         <div className="flex items-center gap-2">
+                                            <span className="text-xl" style={{ lineHeight: 1 }}>{playerAvatarsList[opponentTeam] || ALL_AVATARS[0].icon}</span>
+                                            <span className={`text-sm font-bold ${opponentTeam % 2 === 0 ? 'text-blue-400' : 'text-rose-400'}`}>{playerNamesList[opponentTeam] || 'LAWAN'}</span>
+                                        </div>
+                                        <span className="text-3xl font-black text-white">{scores[opponentTeam]}</span>
+                                    </div>
+                                </div>
+                           </div>
+                           
+                           {/* Utility buttons diletakkan di bawah skor di desktop */}
+                           <div className="flex justify-center gap-3 p-2 bg-[#0e3355]/50 rounded-xl border border-white/10 w-full">
+                                <UtilityButton 
+                                    icon={HelpCircle} 
+                                    onClick={() => setShowInfoModal(true)} 
+                                    title="Informasi Game" 
+                                    colorClass="text-emerald-400"
+                                />
                           </div>
                       </div>
-
-                      {/* --- TENGAH: PAPAN UTAMA --- */}
-                      <div className="relative flex items-center justify-center w-full h-full">
-                          <div className="relative z-10 w-full max-w-[98vmin] aspect-square bg-board-base p-[2px] rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-white/10">
+                      
+                      {/* --- TENGAH: PAPAN UTAMA (Maksimalkan Ruang) --- */}
+                      <div className="relative flex items-center justify-center w-full max-w-[95vmin] md:max-w-[70vmin] xl:max-w-none xl:w-[600px] xl:h-[600px] aspect-square">
+                          <div className="relative z-10 w-full h-full bg-board-base p-[2px] rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-white/10">
                               <div className="w-full h-full grid grid-cols-10 gap-[1px] bg-board-base border border-white/5 relative">
+                                  {/* SVG Garis Kemenangan */}
                                   <svg className="absolute inset-0 w-full h-full pointer-events-none z-40">
                                       {winningLines.map((lineObj, idx) => {
                                           const start = lineObj.line[0];
@@ -1680,74 +1775,38 @@ function SequenceGameInternal() {
                           </div>
                       </div>
 
-                      {/* --- KANAN: HUD RINGKAS --- */}
-                      <div className="flex flex-col md:w-48 justify-start space-y-3 p-2 order-first md:order-last">
-                          
-                          {/* Timer Cepat */}
-                          <div className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 shadow-lg ${isMyTurn ? 'border-amber-500 bg-amber-900/30' : 'border-zinc-700 bg-[#1A538A]/50'}`}>
-                              <span className="text-[10px] font-bold uppercase text-zinc-400">DURASI GILIRAN</span>
-                              <div className={`text-4xl font-mono font-black ${currentTimerColor} drop-shadow-md`}>
-                                  {isMyTurn ? timeDisplay.split(':')[0] : '5'}
-                                  <span className="text-2xl font-normal">:</span>
-                                  {isMyTurn ? timeDisplay.split(':')[1] : '00'}
-                              </div>
+                      {/* --- KANAN: HAND CARDS (Hanya untuk Desktop/Tablet) --- */}
+                      <div className="hidden xl:flex flex-col items-center justify-center gap-3 w-40 p-2 bg-[#0e3355]/50 rounded-xl border border-white/10">
+                          <p className="text-xs font-bold uppercase text-amber-300 w-full text-center">KARTU TANGAN SAYA ({hands[appMode === 'online-game' ? playerIndex : 0]?.length || 0})</p>
+                          <div className="flex flex-col gap-2 p-1">
+                            {(hands[appMode === 'online-game' ? playerIndex : 0] || []).map((card, i) => (
+                                <HandCard 
+                                    key={i} 
+                                    card={card} 
+                                    selected={selectedCardIdx === i} 
+                                    disabled={winner !== null || (appMode==='online-game' && turn !== playerIndex)}
+                                    onClick={() => { 
+                                        if (appMode === 'offline-bot' && turn !== 0) return;
+                                        if(winner===null && (appMode!=='online-game' || turn===playerIndex)) { 
+                                            playEffect('move'); setSelectedCardIdx(selectedCardIdx === i ? null : i); 
+                                        } 
+                                    }}
+                                />
+                            ))}
                           </div>
-
-                          {/* Detail Tim Sendiri (Mobile/Tablet) */}
-                          <div className={`flex items-center gap-3 md:hidden px-3 py-2 rounded-xl border-2 ${isBlueTeam ? 'border-blue-500 bg-blue-900/40' : 'border-rose-500 bg-rose-900/40'}`}>
-                              {/* Avatar Saya (Emoji) */}
-                              <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-white/10 ring-2 ${isBlueTeam ? 'ring-blue-400' : 'ring-rose-400'}`}>
-                                  <span className="text-lg" style={{ lineHeight: 1 }}>{myAvatar}</span>
-                              </div>
-                              <div>
-                                  <p className="text-sm font-bold text-white">{playerName}</p>
-                                  <p className="text-xs text-zinc-400">Tim {isBlueTeam ? 'Biru' : 'Merah'}</p>
-                              </div>
-                          </div>
-
-                          <SidePanelItem 
-                              title="SKOR TIM SAYA"
-                              value={scores[myTeam]}
-                              icon={Diamond}
-                              colorClass={isBlueTeam ? 'text-blue-400 border-blue-500/30' : 'text-rose-400 border-rose-500/30'}
-                          />
-                          <SidePanelItem 
-                              title="SKOR TARGET"
-                              value={WINNING_SCORE}
-                              icon={Trophy}
-                              colorClass="text-amber-400 border-amber-500/30"
-                          />
-                          <SidePanelItem 
-                              title="GILIRAN KE-"
-                              value={turn + 1}
-                              icon={RotateCcw}
-                              colorClass="text-zinc-300 border-zinc-500/30"
-                          />
-                          {/* Slot Pemain Lawan (P1/P3 Tim Merah) - Hanya Tampil di Mobile */}
-                          <div className="md:hidden bg-rose-900/40 border border-rose-500/30 rounded-xl p-3 shadow-md">
-                              <div className="flex items-center gap-3">
-                                  {/* Avatar Lawan Mobile (Emoji) */}
-                                  <div className="flex items-center justify-center w-8 h-8 rounded-full ring-2 ring-rose-400/50 bg-white/10">
-                                      <span className="text-lg" style={{ lineHeight: 1 }}>{playerAvatarsList[opponentTeam] || ALL_AVATARS[0].icon}</span>
-                                  </div>
-                                  <div>
-                                      <p className="text-sm font-bold text-rose-300">{playerNamesList[opponentTeam] || 'Lawan'}</p>
-                                      <p className="text-xs text-zinc-400">Tim Merah</p>
-                                  </div>
-                              </div>
-                          </div>
-
                       </div>
                   </div>
              </main>
 
-             {/* --- BOTTOM HUD --- */}
-             <footer className="relative z-50 pb-safe">
+             {/* --- BOTTOM HUD (KARTU TANGAN KHUSUS MOBILE) --- */}
+             <footer className="relative z-50 pb-safe md:pb-0">
                   <div className="h-6 bg-gradient-to-r from-transparent via-black/80 to-transparent flex items-center justify-center pointer-events-none">
                       <p className="text-[10px] font-bold text-amber-100 drop-shadow-md tracking-wide animate-pulse">{message}</p>
                   </div>
-
-                  <div className="bg-[#1A538A]/95 backdrop-blur-xl border-t border-white/10 pt-3 pb-4 px-2 flex flex-col items-center shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+                  
+                  {/* Container Kartu (Hanya Mobile/Tablet) */}
+                  <div className="xl:hidden bg-[#1A538A]/95 backdrop-blur-xl border-t border-white/10 pt-3 pb-4 px-2 flex flex-col items-center shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+                       <p className="text-xs font-bold uppercase text-amber-300 mb-2">KARTU TANGAN SAYA ({hands[appMode === 'online-game' ? playerIndex : 0]?.length || 0})</p>
                        <div className="flex gap-2 overflow-x-auto max-w-full scrollbar-hide px-2 py-1 snap-x">
                             {(hands[appMode === 'online-game' ? playerIndex : 0] || []).map((card, i) => (
                                 <HandCard 
@@ -1764,27 +1823,10 @@ function SequenceGameInternal() {
                                 />
                             ))}
                        </div>
-                       
-                       <div className="absolute top-0 -translate-y-1/2 flex gap-4">
-                            <div className={`px-4 py-1 rounded-full border-2 shadow-lg font-black text-xs tracking-wider flex items-center gap-2 bg-[#1A538A] ${isBlueTeam ? 'border-blue-500 text-blue-400 scale-110 z-10' : 'border-rose-500 text-rose-400 scale-110 z-10'}`}>
-                                 <div className={`w-2 h-2 rounded-full ${isBlueTeam ? 'bg-blue-500' : 'bg-rose-500'}`}></div>
-                                 {isBlueTeam ? 'TIM BIRU' : 'TIM MERAH'}
-                            </div>
-                            {/* Tombol Chat dipindahkan ke kanan atas area permainan */}
-                            <button onClick={()=>{setShowChat(!showChat); setUnreadCount(0);}} className="w-8 h-8 rounded-full bg-amber-600 border border-white/20 shadow-lg flex items-center justify-center text-white hover:scale-110 transition-transform md:hidden">
-                                <MessageCircle size={16} />
-                                {unreadCount > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-[8px] flex items-center justify-center">{unreadCount}</span>}
-                            </button>
-                       </div>
-                       {/* Tombol Chat untuk desktop (tidak mengganggu kartu pemain) */}
-                       <button onClick={()=>{setShowChat(!showChat); setUnreadCount(0);}} className="hidden md:block absolute top-1/2 right-4 -translate-y-1/2 w-10 h-10 rounded-full bg-amber-600 border border-white/20 shadow-lg flex items-center justify-center text-white hover:scale-110 transition-transform">
-                            <MessageCircle size={20} />
-                            {unreadCount > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] flex items-center justify-center">{unreadCount}</span>}
-                       </button>
-
                   </div>
              </footer>
 
+             {/* Modals/Overlays */}
              <ChatOverlay 
                 isOpen={showChat} 
                 onClose={()=>setShowChat(false)} 
@@ -1792,6 +1834,9 @@ function SequenceGameInternal() {
                 onSend={handleSendChat}
                 myName={playerName}
              />
+             {showInfoModal && <GameInfoModal onClose={() => setShowInfoModal(false)} />}
+             {showProfileModal && <ProfileSelectorModal currentName={playerName} currentAvatar={playerAvatar} onSave={(name, avatar) => { setPlayerName(name); setPlayerAvatar(avatar); setShowProfileModal(false); }} onClose={() => setShowProfileModal(false)}/>}
+             {showBotSelectModal && <BotSelectModal botMessages={botMessages} onSelect={(key) => { setBotLevel(key); setShowBotSelectModal(false); initGame('offline-bot'); }} onClose={() => setShowBotSelectModal(false)} />}
 
              {toast && (
                  <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[100] animate-drop-in">
