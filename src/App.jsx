@@ -1,1902 +1,1580 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef, Component } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { initializeApp } from "firebase/app";
 import { 
-  RotateCcw, Trophy, X, Users, Bot, 
-  Volume2, VolumeX, Clock, Vibrator, Smartphone,
-  ShieldCheck, Loader, MessageCircle, Send, Smile,
-  User, CheckCircle, WifiOff, Edit3, BookOpen, Crown, Ban, Lock, Copy,
-  LogOut, Play, AlertOctagon, HelpCircle, Flame, Sword, Diamond,
-  Brain, Zap, Shield, Heart, Aperture, MessageSquareText
+  getAuth, 
+  signInAnonymously, 
+  onAuthStateChanged 
+} from "firebase/auth";
+import { 
+  getFirestore, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  onSnapshot, 
+  updateDoc, 
+  arrayUnion, 
+  serverTimestamp 
+} from "firebase/firestore";
+import { 
+  Bot, 
+  X,
+  HelpCircle,
+  AlertTriangle,
+  Volume2,
+  VolumeX,
+  Vibrate,
+  MessageCircle,
+  Smile,
+  Settings,
+  Lightbulb,
+  Crown,
+  Home,
+  Trophy,
+  Copy,
+  Play,
+  RotateCcw,
+  LogOut,
+  Info,
+  Wifi,
+  WifiOff,
+  Swords, 
+  ArrowLeft,
+  ShieldCheck,
+  User,
+  Camera,
+  Brain,
+  Zap,
+  Skull,
+  Edit,
+  Save,
+  FileText, 
+  Trash2,
+  RefreshCw,
+  Loader
 } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, updateDoc, getDoc, arrayUnion } from 'firebase/firestore';
 
-/**
- * ============================================================================
- * KONFIGURASI DEPLOYMENT
- * ============================================================================
- * * CATATAN PENTING: Untuk deployment ke Netlify/GitHub, Anda HARUS 
- * MENGISI YOUR_FIREBASE_CONFIG di file OneFile.jsx (jika ada) 
- * atau di sini jika Anda hanya menggunakan file ini.
- * Saya mengosongkannya di sini untuk mencegah kebocoran kunci default.
- */
-const YOUR_FIREBASE_CONFIG = null; // Diisi di file OneFile.jsx/Environment Variables
-
-// --- UTILITAS ---
-const safeParse = (jsonString, fallbackValue) => {
-    if (!jsonString) return fallbackValue;
-    try {
-        const result = JSON.parse(jsonString);
-        return result === null ? fallbackValue : result;
-    } catch (e) { return fallbackValue; }
+// --- FIREBASE CONFIGURATION ---
+const firebaseConfig = {
+  apiKey: "AIzaSyA1O5kryQhDgperTijvs9Xy1NBpuaZLS4Q",
+  authDomain: "sequence-online-multiplayer-25.firebaseapp.com",
+  projectId: "sequence-online-multiplayer-25",
+  storageBucket: "sequence-online-multiplayer-25.firebasestorage.app",
+  messagingSenderId: "1009641872290",
+  appId: "1:1009641872290:web:1c7de27d90c561a2f3b0fb"
 };
 
-// --- ERROR BOUNDARY ---
-class ErrorBoundary extends Component {
-  constructor(props) { super(props); this.state = { hasError: false }; }
-  static getDerivedStateFromError(error) { return { hasError: true }; }
-  componentDidCatch(error, errorInfo) { console.error("Game Crash:", error, errorInfo); }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="fixed inset-0 bg-[#050505] flex flex-col items-center justify-center text-white p-6 text-center z-[9999]">
-          <WifiOff size={64} className="text-amber-500 mb-4 animate-pulse"/>
-          <h2 className="2xl font-black text-amber-400 mb-2 tracking-widest">GANGGUAN SISTEM</h2>
-          <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="mt-6 px-8 py-3 bg-amber-600 rounded-full font-bold">RESET GAME</button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const APP_ID = "sequence-game-v1";
 
-// --- KONFIGURASI GAME ---
-const WINNING_SCORE = 3; 
-const TURN_DURATION = 300; // 5 Menit
-const SUITS = ['♠', '♣', '♥', '♦'];
-const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Q', 'K', 'A'];
-const CARD_BACK_URL = "https://deckofcardsapi.com/static/img/back.png";
-const EMOJIS = ["🔥", "😂", "😎", "😡", "😭", "🤔", "👎", "👍", "🐌", "👻", "🤝", "GG", "👑"];
+// --- CONSTANTS ---
+const SUITS = ['♠', '♥', '♣', '♦'];
+const ALL_RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 
-// Avatar Emoji Baru (20 Karakter)
-const ALL_AVATARS = [
-    { icon: "🤠", label: "Koboi Lucu" },
-    { icon: "🐻‍❄️", label: "Beruang Kutub Santai" },
-    { icon: "🐸", label: "Kodok Senyum" },
-    { icon: "🤖", label: "Robot Mengedip" },
-    { icon: "🧑‍🚀", label: "Astronot Bingung" },
-    { icon: "👴", label: "Kakek Tertawa" },
-    { icon: "👨‍🦰", label: "Ayah Keren" },
-    { icon: "🦹‍♂️", label: "Penjahat Konyol" },
-    { icon: "🐉", label: "Naga Mini" },
-    { icon: "🐒", label: "Monyet Nakal" },
-    { icon: "👸", label: "Putri Gembira" },
-    { icon: "👩‍🔬", label: "Ilmuwan Bersemangat" },
-    { icon: "👵", label: "Nenek Bijak" },
-    { icon: "👩‍🍳", label: "Ibu Koki" },
-    { icon: "🦄", label: "Unicorn Fantasi" },
-    { icon: "🧜‍♀️", label: "Putri Duyung Ceria" },
-    { icon: "👩‍🎤", label: "Penyanyi Pop" },
-    { icon: "🐰", label: "Kelinci Manis" },
-    { icon: "👽", label: "Alien Cantik" },
-    { icon: "🦉", label: "Burung Hantu Pintar" },
-];
-
-// --- FIREBASE SETUP ---
-let app, auth, db;
-let isOnlineAvailable = false;
-let isCustomConfig = false;
-
-const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'sequence-game-prod';
-const appId = rawAppId.replace(/[^a-zA-Z0-9_-]/g, '_'); 
-
-try {
-  // Cek jika menggunakan konfigurasi Canvas/Environment
-  if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-    const firebaseConfig = JSON.parse(__firebase_config);
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
-    isOnlineAvailable = true;
-    isCustomConfig = false;
-  }
-  // Cek jika menggunakan konfigurasi statis (seperti di Netlify/GitHub)
-  else if (YOUR_FIREBASE_CONFIG && YOUR_FIREBASE_CONFIG.projectId) {
-    const firebaseConfig = YOUR_FIREBASE_CONFIG;
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
-    isOnlineAvailable = true;
-    isCustomConfig = true;
-  } 
-} catch (e) { console.error("Firebase Init Error:", e); }
-
-// --- DATA PAPAN ---
 const REAL_BOARD_PATTERN = [
-    ['XX', '6♦', '7♦', '8♦', '9♦', '10♦', 'Q♦', 'K♦', 'A♦', 'XX'],
-    ['5♦', '3♥', '2♥', '2♠', '3♠', '4♠', '5♠', '6♠', '7♠', 'A♣'],
-    ['4♦', '4♥', 'K♦', 'A♦', 'A♣', 'K♣', 'Q♣', '10♣', '8♠', 'K♣'],
-    ['3♦', '5♥', 'Q♦', 'Q♥', '10♥', '9♥', '8♥', '9♣', '9♠', 'Q♣'],
-    ['2♦', '6♥', '10♦', 'K♥', '3♥', '2♥', '7♥', '8♣', '10♠', '10♣'], 
-    ['A♠', '7♥', '9♦', 'A♥', '4♥', '5♥', '6♥', '7♣', 'Q♠', '9♣'],
-    ['Q♠', '8♥', '8♦', '2♣', '3♣', '4♣', '5♣', '6♣', 'K♠', '8♣'],
-    ['K♠', '9♥', '7♦', '6♦', '5♦', '4♦', '3♦', '2♦', 'A♠', '7♣'],
-    ['10♠', '10♥', 'Q♥', 'K♥', 'A♥', '2♣', '3♣', '4♣', '5♣', '6♣'],
-    ['XX', '9♠', '8♠', '7♠', '6♠', '5♠', '4♠', '3♠', '2♠', 'XX']
+	['XX', '6♦', '7♦', '8♦', '9♦', '10♦', 'Q♦', 'K♦', 'A♦', 'XX'],
+	['5♦', '3♥', '2♥', '2♠', '3♠', '4♠', '5♠', '6♠', '7♠', 'A♣'],
+	['4♦', '4♥', 'K♦', 'A♦', 'A♣', 'K♣', 'Q♣', '10♣', '8♠', 'K♣'],
+	['3♦', '5♥', 'Q♦', 'Q♥', '10♥', '9♥', '8♥', '9♣', '9♠', 'Q♣'],
+	['2♦', '6♥', '10♦', 'K♥', '3♥', '2♥', '7♥', '8♣', '10♠', '10♣'],	
+	['A♠', '7♥', '9♦', 'A♥', '4♥', '5♥', '6♥', '7♣', 'Q♠', '9♣'],
+	['Q♠', '8♥', '8♦', '2♣', '3♣', '4♣', '5♣', '6♣', 'K♠', '8♣'],
+	['K♠', '9♥', '7♦', '6♦', '5♦', '4♦', '3♦', '2♦', 'A♠', '7♣'],
+	['10♠', '10♥', 'Q♥', 'K♥', 'A♥', '2♣', '3♣', '4♣', '5♣', '6♣'],
+	['XX', '9♠', '8♠', '7♠', '6♠', '5♠', '4♠', '3♠', '2♠', 'XX']
 ];
 
-// --- ASSETS & HELPERS ---
-const getCardImageUrl = (rank, suit) => {
-    if (rank === 'XX' || !rank || !suit) return null;
-    let sCode = suit === '♠' ? 'S' : suit === '♣' ? 'C' : suit === '♥' ? 'H' : 'D';
-    let rCode = rank === '10' ? '0' : rank;
-    return `https://deckofcardsapi.com/static/img/${rCode}${sCode}.png`;
+const TEAM_COLORS = {
+  red: { 
+      bg: 'bg-red-600', 
+      text: 'text-red-900', 
+      mainColor: '#dc2626', // Red 600
+      line: '#ff5e5e', // Bright Red/Orange for visibility on black
+  },
+  blue: { 
+      bg: 'bg-blue-600', 
+      text: 'text-blue-900', 
+      mainColor: '#2563eb', // Blue 600
+      line: '#00eaff', // Cyan for visibility on black
+  }
 };
 
-const isTwoEyedJack = (r, s) => r === 'J' && (s === '♣' || s === '♦'); 
-const isOneEyedJack = (r, s) => r === 'J' && (s === '♠' || s === '♥'); 
-const getTeam = (pIdx) => pIdx % 2; 
+const EMOJIS = ['😀', '😂', '😍', '😎', '🤔', '😭', '😡', '👍', '👎', '👋', '🙏', '🔥', '💯', '💩', '🤡'];
+const FAMILY_AVATARS = [
+    { emoji: '🚫', label: 'Kosong' },
+    { emoji: '👴', label: 'Kakek' }, { emoji: '👴🏻', label: 'Kakek Pth' }, { emoji: '👴🏾', label: 'Kakek Htm' }, { emoji: '👳‍♂️', label: 'Kakek Srban' }, { emoji: '🤵‍♂️', label: 'Kakek Jas' },
+    { emoji: '👵', label: 'Nenek' }, { emoji: '👵🏼', label: 'Nenek Pth' }, { emoji: '👵🏿', label: 'Nenek Htm' }, { emoji: '🧕', label: 'Nenek Hjb' }, { emoji: '👰‍♀️', label: 'Nenek Gaun' },
+    { emoji: '👨', label: 'Ayah' }, { emoji: '👨🏻', label: 'Ayah Pth' }, { emoji: '👨🏾', label: 'Ayah Htm' }, { emoji: '🧔‍♂️', label: 'Ayah Brwok' }, { emoji: '👮‍♂️', label: 'Ayah Polisi' },
+    { emoji: '👩', label: 'Ibu' }, { emoji: '👩🏼', label: 'Ibu Pth' }, { emoji: '👩🏾', label: 'Ibu Htm' }, { emoji: '👩‍🦱', label: 'Ibu Krtng' }, { emoji: '👩‍⚕️', label: 'Ibu Dokter' },
+    { emoji: '👦', label: 'Anak Laki' }, { emoji: '👦🏻', label: 'Anak Pth' }, { emoji: '👦🏾', label: 'Anak Htm' }, { emoji: '🧢', label: 'Anak Topi' }, { emoji: '🕶️', label: 'Anak Keren' },
+    { emoji: '👧', label: 'Anak Pr' }, { emoji: '👧🏼', label: 'Pr Pth' }, { emoji: '👧🏾', label: 'Pr Htm' }, { emoji: '🎀', label: 'Pr Pita' }, { emoji: '🧚‍♀️', label: 'Pr Peri' }
+];
 
-const createDeck = () => {
-    let deck = [];
-    for (let i = 0; i < 2; i++) { 
-        SUITS.forEach(suit => {
-            RANKS.forEach(rank => deck.push({ suit, rank, id: `${i}-${rank}${suit}` }));
-            deck.push({ suit, rank: 'J', id: `${i}-J${suit}` });
-        });
-    }
-    for (let i = deck.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [deck[i], deck[j]] = [deck[j], deck[i]]; 
-    }
-    return deck;
-};
-
-const formatTime = (seconds) => {
-    if (isNaN(seconds) || seconds < 0) return "0:00";
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    // Format selalu M:SS
-    return `${minutes.toString().padStart(1, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-};
-
-const generateNumericId = () => Math.floor(100000 + Math.random() * 900000).toString();
-
-const getRoomRef = (roomIdStr) => {
-    // Gunakan koleksi 'rooms' jika menggunakan konfigurasi statis/kustom (Netlify/GitHub)
-    if (isCustomConfig || typeof __firebase_config === 'undefined') return doc(db, 'rooms', roomIdStr);
-    // Gunakan jalur Canvas jika menggunakan variabel __app_id
-    return doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomIdStr);
-};
-
-// --- UTILITY UNTUK LOGIKA GAME (DIPINDAHKAN KELUAR KOMPONEN AGAR DAPAT DIAKSES OLEH BOT) ---
-const checkNeighbors = (boardState, r, c, team) => {
-    const dirs = [[0,1], [1,0], [1,1], [1,-1]]; let maxSeq = 0;
-    for(let d of dirs) {
-        let count = 0; 
-        [1, -1].forEach(mult => { 
-            for(let k=1; k<5; k++) { 
-                const nr=r+(k*d[0]*mult), nc=c+(k*d[1]*mult); 
-                if(nr>=0 && nr<10 && nc>=0 && nc<10 && boardState[nr][nc]) { 
-                    const cell = boardState[nr][nc]; 
-                    if(cell.type === 'corner' || (cell.chip !== null && getTeam(cell.chip) === team)) count++; 
-                    else break; 
-                } else break; 
-            } 
-        });
-        if(count > maxSeq) maxSeq = count;
-    } 
-    return maxSeq;
-};
-// --- END UTILITY ---
-
-
-// --- KOMPONEN VISUAL ---
-const CardFallback = ({ rank, suit }) => (
-    <div className="w-full h-full bg-[#f1f5f9] flex flex-col items-center justify-center border border-slate-300 rounded-md select-none relative shadow-sm">
-        <span className={`text-[10px] sm:text-xs font-black ${['♥','♦'].includes(suit)?'text-red-600':'text-slate-900'}`}>{rank}</span>
-        <span className="text-xs sm:text-sm">{suit}</span>
-    </div>
-);
-
-const DealingOverlay = ({ onComplete }) => {
-    useEffect(() => {
-        const timer = setTimeout(onComplete, 3000);
-        return () => clearTimeout(timer);
-    }, [onComplete]);
-
-    return (
-        <div className="absolute inset-0 z-[999] bg-[#050505]/90 backdrop-blur-md flex flex-col items-center justify-center select-none pointer-events-none">
-            <div className="relative w-32 h-48">
-                 {[...Array(5)].map((_, i) => (
-                    <img 
-                        key={i}
-                        src={CARD_BACK_URL} 
-                        className="absolute top-0 left-0 w-full h-full rounded-xl shadow-2xl border border-white/10"
-                        style={{ 
-                            animation: `dealCard 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) ${i * 0.15}s forwards`,
-                            transform: `translateY(-${i * 2}px) translateX(-${i * 2}px)`
-                        }}
-                        alt=""
-                    />
-                 ))}
-            </div>
-            <h2 className="mt-16 text-2xl font-black text-amber-500 tracking-[0.5em] animate-pulse">MEMBAGI KARTU</h2>
-        </div>
-    );
-};
-
-const OpponentPlayedCard = ({ card }) => {
-    if (!card) return null;
-    const imgUrl = getCardImageUrl(card.rank, card.suit);
-    return (
-        // Diposisikan ulang agar tidak menutupi papan besar
-        <div className="absolute top-[20%] right-[30%] z-[100] pointer-events-none" style={{ perspective: '1000px' }}>
-            <div className="w-24 sm:w-32 aspect-[2/3] bg-white rounded-xl shadow-[0_0_30px_rgba(0,0,0,0.5)] border-2 border-amber-400 origin-center animate-opponent-play">
-                 <img src={imgUrl} className="w-full h-full object-contain p-1" alt="" />
-                 <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-4 py-1 rounded-full text-[10px] font-black tracking-widest whitespace-nowrap border border-white/20 shadow-lg">
-                    LAWAN
-                 </div>
-            </div>
-        </div>
-    );
-};
-
-const ChipContent = React.memo(({ rank, suit, isWild, locked }) => {
-    if (isWild) {
-        return <Crown size={14} className="text-amber-200 drop-shadow-sm" />;
-    }
-    if (!rank || !suit) return null;
-    const isRed = ['♥', '♦'].includes(suit);
-    return (
-        <div className={`flex flex-col items-center justify-center leading-none ${isRed ? 'text-red-100' : 'text-blue-100'}`}>
-            <span className="text-[10px] font-black">{rank}</span>
-            <span className="text-[10px]">{suit}</span>
-            {locked && <Lock size={8} className="text-white/90 drop-shadow-md absolute -top-1 -right-1" />}
-        </div>
-    );
-});
-
-// --- KOMPONEN CHAT ---
-const EmojiPicker = ({ onSelect }) => (
-    <div className="absolute bottom-12 right-0 w-48 bg-zinc-800/95 backdrop-blur-sm border border-white/10 p-2 rounded-xl shadow-xl z-50 animate-drop-in">
-        <div className="grid grid-cols-5 gap-1">
-            {EMOJIS.map((emoji, i) => (
-                <button 
-                    key={i} 
-                    onClick={() => onSelect(emoji)} 
-                    className="text-lg p-1 rounded-lg hover:bg-zinc-700 transition-colors"
-                >
-                    {emoji}
-                </button>
-            ))}
-        </div>
-    </div>
-);
-
-const ChatOverlay = ({ isOpen, onClose, chats, onSend, myName }) => {
-    const [text, setText] = useState("");
-    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-    const messagesEndRef = useRef(null);
-    
-    useEffect(() => {
-        if(isOpen && messagesEndRef.current) messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }, [chats, isOpen]);
-
-    if (!isOpen) return null;
-
-    const handleSelectEmoji = (emoji) => {
-        setText(prev => prev + emoji);
-        setShowEmojiPicker(false);
-    };
-    
-    const handleSend = () => {
-        if(text.trim()) { 
-            onSend(text); 
-            setText("");
-            setShowEmojiPicker(false);
+// --- AUDIO SYNTHESIZER ---
+const playSynthSound = (type) => {
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        const now = ctx.currentTime;
+        
+        if (type === 'place') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800, now);
+            osc.frequency.exponentialRampToValueAtTime(300, now + 0.1);
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.start(now);
+            osc.stop(now + 0.1);
+        } else if (type === 'recycle') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(300, now);
+            osc.frequency.linearRampToValueAtTime(100, now + 0.1);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.linearRampToValueAtTime(0, now + 0.15);
+            osc.start(now);
+            osc.stop(now + 0.15);
+        } else if (type === 'remove') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(400, now);
+            osc.frequency.linearRampToValueAtTime(50, now + 0.5); 
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.linearRampToValueAtTime(0.01, now + 0.5); 
+            osc.start(now);
+            osc.stop(now + 0.5);
+        } else if (type === 'wild') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, now);
+            osc.frequency.linearRampToValueAtTime(1200, now + 0.2);
+            osc.frequency.linearRampToValueAtTime(600, now + 0.4);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.linearRampToValueAtTime(0, now + 0.4);
+            osc.start(now);
+            osc.stop(now + 0.4);
+        } else if (type === 'message') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(1200, now);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            osc.start(now);
+            osc.stop(now + 0.3);
+        } else if (type === 'win') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(523.25, now);
+            osc.frequency.setValueAtTime(659.25, now + 0.1);
+            osc.frequency.setValueAtTime(783.99, now + 0.2);
+            osc.frequency.setValueAtTime(1046.50, now + 0.3);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.linearRampToValueAtTime(0.1, now + 0.4);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+            osc.start(now);
+            osc.stop(now + 0.8);
+        } else if (type === 'error') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.linearRampToValueAtTime(100, now + 0.2);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+            osc.start(now);
+            osc.stop(now + 0.2);
+        } else if (type === 'join') {
+            // New Sound for Player Joining
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(400, now);
+            osc.frequency.linearRampToValueAtTime(800, now + 0.1);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.linearRampToValueAtTime(0, now + 0.3);
+            osc.start(now);
+            osc.stop(now + 0.3);
         }
+    } catch (e) {
+        console.error("Audio error", e);
     }
+};
+
+// --- HELPER FUNCTIONS ---
+const generateDeck = () => {
+  let deck = [];
+  for (let i = 0; i < 2; i++) {
+    SUITS.forEach(suit => {
+      ALL_RANKS.forEach(rank => {
+        let type = 'standard';
+        if (rank === 'J') {
+          type = (suit === '♥' || suit === '♦') ? 'wild' : 'remove';
+        }
+        deck.push({ suit, rank, type, id: `${rank}${suit}-${i}-${Math.random().toString(36).substr(2, 5)}` });
+      });
+    });
+  }
+  return deck.sort(() => Math.random() - 0.5);
+};
+
+const generateBoard = () => {
+  const board = [];
+  for (let r = 0; r < 10; r++) {
+    const row = [];
+    for (let c = 0; c < 10; c++) {
+      const code = REAL_BOARD_PATTERN[r][c];
+      if (code === 'XX') {
+        row.push({ isCorner: true, chip: 'corner', locked: true }); 
+      } else {
+        const suit = code.slice(-1);
+        const rank = code.slice(0, -1);
+        row.push({ suit, rank, chip: null, locked: false, isCorner: false, isRemoving: false, playedWithWild: false });
+      }
+    }
+    board.push(row);
+  }
+  return board;
+};
+
+// --- LOGIC ---
+const getValidMoves = (card, board, myTeam) => {
+  const moves = [];
+  for (let r = 0; r < 10; r++) {
+    for (let c = 0; c < 10; c++) {
+      const cell = board[r][c];
+      let isValid = false;
+      if (card.type === 'wild') {
+        if (!cell.chip && !cell.isCorner) isValid = true;
+      } else if (card.type === 'remove') {
+        if (cell.chip && cell.chip !== myTeam && !cell.locked && !cell.isCorner) isValid = true;
+      } else {
+        if (cell.rank === card.rank && cell.suit === card.suit && !cell.chip) isValid = true;
+      }
+      if (isValid) moves.push({r, c});
+    }
+  }
+  return moves;
+};
+
+const isCardDead = (card, board, myTeam) => {
+  if (card.type === 'wild' || card.type === 'remove') return false;
+  const validMoves = getValidMoves(card, board, myTeam);
+  return validMoves.length === 0;
+};
+
+const checkForSequences = (board, team) => {
+  let newSequencesFound = 0;
+  const newLines = [];
+  const tempBoard = JSON.parse(JSON.stringify(board));
+  
+  const directions = [[0, 1], [1, 0], [1, 1], [1, -1]];
+  const isValidPos = (r, c) => r >= 0 && r < 10 && c >= 0 && c < 10;
+
+  for (let r = 0; r < 10; r++) {
+    for (let c = 0; c < 10; c++) {
+      directions.forEach(([dr, dc]) => {
+        let line = [];
+        let coords = [];
+        for (let i = 0; i < 5; i++) {
+           let nr = r + i * dr;
+           let nc = c + i * dc;
+           if (isValidPos(nr, nc)) {
+             line.push(tempBoard[nr][nc]);
+             coords.push({r: nr, c: nc});
+           }
+        }
+
+        if (line.length === 5) {
+          const allMatch = line.every(cell => (cell.chip === team) || cell.isCorner);
+          if (allMatch) {
+            const nonCornerLocked = line.filter(cell => !cell.isCorner && cell.locked).length;
+            const allLocked = line.every(cell => cell.locked);
+            if (!allLocked && nonCornerLocked <= 1) {
+                 newSequencesFound++;
+                 newLines.push({ start: coords[0], end: coords[4], team: team });
+                 coords.forEach(({r, c}) => {
+                    board[r][c].locked = true; 
+                    tempBoard[r][c].locked = true;
+                 });
+            }
+          }
+        }
+      });
+    }
+  }
+  return { count: newSequencesFound, lines: newLines };
+};
+
+// --- VISUAL COMPONENTS ---
+
+// POKER CHIP COMPONENT (Responsive Text)
+const PokerChip = ({ team, rank, suit, isWild }) => {
+    const mainColor = TEAM_COLORS[team].mainColor;
+    const isRedSuit = ['♥', '♦'].includes(suit);
+    
+    return (
+        <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-md">
+             {/* 1. Outer Edge (Base) */}
+             <circle cx="50" cy="50" r="48" fill="white" stroke="#222" strokeWidth="0.5" />
+             
+             {/* 2. Checkerboard Rim */}
+             <circle 
+                cx="50" 
+                cy="50" 
+                r="40" 
+                fill="none" 
+                stroke={mainColor} 
+                strokeWidth="16"
+                strokeDasharray="15.7 15.7"
+                transform="rotate(0 50 50)"
+             />
+             
+             {/* 3. Inner White Circle */}
+             <circle cx="50" cy="50" r="32" fill="white" stroke={mainColor} strokeWidth="1" />
+
+             {/* 4. Text Content: Rank & Suit */}
+             <text x="50" y="52" textAnchor="middle" dominantBaseline="central" fill={isRedSuit ? '#dc2626' : '#000'} style={{ fontSize: '32px', fontWeight: '900', fontFamily: 'serif' }}>
+                {rank}{suit}
+             </text>
+             
+             {/* 5. Decorative "j2" text (ONLY IF PLAYED WITH WILD CARD) */}
+             {isWild && (
+                 <text x="50" y="72" textAnchor="middle" fill={mainColor} style={{ fontSize: '10px', fontWeight: 'bold', fontFamily: 'sans-serif', opacity: 0.8 }}>
+                    J2
+                 </text>
+             )}
+        </svg>
+    );
+};
+
+const RealCardFace = ({ rank, suit, type, isHand = false }) => {
+    // Elegant Board: Black background, Gold Border, White/Red Text
+    const isRed = ['♥','♦'].includes(suit);
+    const textColor = isHand ? (isRed ? '#ef4444' : '#1f2937') : (isRed ? '#ff5555' : '#ffffff'); 
+    
+    const isFace = ['J', 'Q', 'K'].includes(rank);
+    const isJack = rank === 'J';
+    
+    let jackLabel = "";
+    if (isJack) jackLabel = type === 'wild' ? "j2" : "j1";
+
+    // RESPONSIVE TEXT SIZING
+    const rankSize = isHand ? 'text-sm md:text-lg' : 'text-[6px] md:text-[10px]';
+    const suitSize = isHand ? 'text-xs md:text-sm' : 'text-[6px] md:text-[10px]';
+    const centerSize = isHand ? 'text-4xl md:text-6xl' : 'text-lg md:text-2xl';
 
     return (
-        // Posisikan di sudut kanan atas area permainan, menjauh dari hand card
-        <div className="fixed top-1/2 right-4 -translate-y-1/2 z-[90] w-72 h-80 bg-[#1e293b]/95 backdrop-blur-md border border-white/10 rounded-2xl flex flex-col shadow-2xl animate-drop-in origin-right">
-            <div className="p-3 border-b border-white/5 flex justify-between items-center bg-black/20 rounded-t-2xl">
-                <span className="text-xs font-bold text-amber-500 flex items-center gap-2"><MessageCircle size={14}/> LIVE CHAT</span>
-                <button onClick={onClose}><X size={16} className="text-zinc-500 hover:text-white"/></button>
+        <div className={`
+            relative w-full h-full rounded-[4px] md:rounded-[6px] flex flex-col justify-between overflow-hidden select-none font-serif
+            ${isHand ? 'bg-white border border-gray-300 shadow-md p-1.5' : 'bg-slate-950 border border-yellow-600/60 p-[1px] shadow-sm'}
+        `} style={{ color: textColor }}>
+            
+            {/* Corner Rank/Suit */}
+            <div className="flex flex-col items-center leading-none absolute top-0.5 left-0.5">
+                <div className={`${rankSize} font-bold`}>{rank}</div>
+                <div className={`${suitSize}`}>{suit}</div>
             </div>
-            <div className="flex-grow overflow-y-auto p-3 space-y-2 scrollbar-hide">
-                {chats.length === 0 && <p className="text-[10px] text-zinc-500 text-center italic mt-10">Belum ada pesan. Mulai ejekan!</p>}
-                {chats.map((c, i) => (
-                    <div key={i} className={`flex flex-col ${c.senderName === myName ? 'items-end' : 'items-start'}`}>
-                        <div className={`max-w-[85%] px-3 py-2 rounded-xl text-[10px] font-bold ${c.senderName === 'SYSTEM' ? 'bg-zinc-700 text-zinc-300 w-full text-center' : (c.senderName === myName ? 'bg-amber-600 text-white rounded-br-none' : 'bg-slate-700 text-white rounded-bl-none')}`}>
-                            {c.senderName !== myName && c.senderName !== 'SYSTEM' && <span className="block text-[8px] text-zinc-400 mb-[1px]">{c.senderName}</span>}
-                            {c.text}
-                        </div>
+            
+            {isJack && <div className={`absolute top-0.5 right-1 font-sans font-bold ${isHand ? 'text-[10px] md:text-xs' : 'text-[5px] text-yellow-500'}`}>{jackLabel}</div>}
+            
+            {/* Center Content */}
+            <div className="flex-1 flex items-center justify-center w-full h-full p-1">
+                {isFace ? (
+                    <div className={`w-full h-[75%] border border-opacity-20 flex flex-col items-center justify-center relative rounded 
+                        ${isHand 
+                            ? (isRed ? 'border-red-500 bg-red-50' : 'border-gray-800 bg-gray-50') 
+                            : 'border-yellow-700/30 bg-slate-900'}
+                    `}>
+                        <Crown size={isHand ? 20 : 12} strokeWidth={1.5} className={`mb-1 ${isHand ? 'opacity-70 md:w-7 md:h-7' : 'text-yellow-500 opacity-90'}`} />
+                        <div className={`${isHand ? 'text-2xl md:text-3xl' : 'text-[10px]'} leading-none font-bold`}>{suit}</div>
                     </div>
-                ))}
-                <div ref={messagesEndRef} />
+                ) : (
+                    <div className={`${centerSize} transform scale-y-90 drop-shadow-sm`}>{suit}</div>
+                )}
             </div>
-            <div className="p-2 border-t border-white/5 flex gap-2 relative">
-                <button 
-                    onClick={() => setShowEmojiPicker(!showEmojiPicker)} 
-                    className="bg-zinc-700 hover:bg-zinc-600 text-white p-2 rounded-lg"
-                >
-                    <Smile size={14} />
-                </button>
-                {showEmojiPicker && <EmojiPicker onSelect={handleSelectEmoji} />}
-
-                <input 
-                    value={text} 
-                    onChange={e=>setText(e.target.value)}
-                    onKeyDown={e => {if(e.key === 'Enter' && text.trim()) { handleSend(); }}}
-                    className="flex-grow bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
-                    placeholder="Ketik pesan..."
-                />
-                <button onClick={handleSend} className="bg-amber-600 hover:bg-amber-500 text-white p-2 rounded-lg"><Send size={14}/></button>
+            
+            {/* Bottom Corner (Rotated) */}
+            <div className="flex flex-col items-center leading-none absolute bottom-0.5 right-0.5 transform rotate-180">
+                <div className={`${rankSize} font-bold`}>{rank}</div>
+                <div className={`${suitSize}`}>{suit}</div>
             </div>
         </div>
     );
 };
 
-const BoardCell = React.memo(({ cell, isHighlight, isTarget, isLast, lastMoveType, isOccupiedError, animatingOut, onClick, isWinningChip }) => {
-    const [imgError, setImgError] = useState(false);
-    const imgUrl = useMemo(() => getCardImageUrl(cell.rank, cell.suit), [cell.rank, cell.suit]);
-    
-    if (cell.type === 'corner') {
-        return (
-            <div className="relative w-full h-full border-[0.5px] border-white/5 overflow-hidden bg-[#0a0a0a] flex items-center justify-center group shadow-inner">
-                <div className="absolute inset-0 bg-[radial-gradient(circle,_rgba(245,158,11,0.1)_1px,transparent_1px)] bg-[length:4px_4px] opacity-30"></div>
-                <Crown size={14} className="text-amber-500/60 drop-shadow-[0_0_8px_rgba(245,158,11,0.4)]"/>
+const CardFan3D = ({ large = false }) => (
+    <div className={`relative mx-auto perspective-500 transform-style-3d ${large ? 'w-48 h-32 md:w-64 md:h-40 animate-float-slow opacity-20 scale-125 md:scale-150' : 'w-32 h-20 md:w-48 md:h-28 animate-float'}`}>
+        {[
+            {color: 'bg-white text-red-500', suit:'♥', rank:'A', rot: -20, y: 0, z: 0},
+            {color: 'bg-white text-black', suit:'♣', rank:'K', rot: -7, y: -8, z: 10},
+            {color: 'bg-white text-red-500', suit:'♦', rank:'Q', rot: 7, y: -8, z: 20},
+            {color: 'bg-white text-black', suit:'♠', rank:'J', rot: 20, y: 0, z: 30},
+        ].map((c, i) => (
+            <div key={i} className={`absolute rounded-xl border-2 border-gray-100 shadow-xl flex flex-col items-center justify-center font-bold ${c.color} transform transition-transform duration-500
+                 ${large ? 'w-16 h-24 md:w-24 md:h-36 border-4' : 'w-10 h-16 md:w-16 md:h-24'}
+            `} 
+                 style={{
+                     transform: `rotate(${c.rot}deg) translateY(${c.y}px) translateZ(${c.z}px)`,
+                     left: '35%', 
+                     top: 0,
+                     transformOrigin: 'bottom center',
+                 }}>
+                <div className={`${large ? 'text-sm md:text-lg' : 'text-[10px] md:text-xs'} absolute top-1 left-1`}>{c.rank}</div>
+                <div className={`${large ? 'text-4xl md:text-6xl' : 'text-2xl md:text-4xl'}`}>{c.suit}</div>
+                <div className={`${large ? 'text-sm md:text-lg' : 'text-[10px] md:text-xs'} absolute bottom-1 right-1 rotate-180`}>{c.rank}</div>
             </div>
-        );
-    }
-    
-    const isDropping = isLast && lastMoveType === 'wild' && !animatingOut;
-    // Locked chips visualnya ada ring kecil
-    const lockedVisual = cell.locked ? "ring-2 ring-black/80" : "hover:brightness-110"; 
-
-    return (
-        <div 
-            onClick={() => onClick(cell.r, cell.c)}
-            className={`relative flex items-center justify-center overflow-hidden cursor-pointer select-none transition-all duration-300 bg-[#e2e8f0] shadow-sm
-                ${isTarget ? 'ring-[3px] ring-yellow-400 z-30 scale-[1.02] shadow-[0_0_20px_rgba(250,204,21,0.8)] animate-pulse brightness-110' : ''}
-                ${isHighlight ? 'ring-[3px] ring-emerald-400 z-30 shadow-[0_0_15px_rgba(16,185,129,0.5)] brightness-105' : ''} 
-                ${lockedVisual}
-                border-[0.5px] border-slate-400/20
-            `}
-            style={{ aspectRatio: '1/1' }}
-        >
-            {imgError ? <CardFallback rank={cell.rank} suit={cell.suit} /> :
-            <img src={imgUrl} onError={() => setImgError(true)} className="w-full h-full object-contain p-[1px] pointer-events-none" loading="lazy" alt="" />}
-            
-            {isTarget && <div className="absolute inset-0 bg-yellow-500/20 flex items-center justify-center z-20"><AlertOctagon className="text-yellow-600 w-5 h-5 drop-shadow-md animate-bounce"/></div>}
-            
-            {isOccupiedError && (
-                <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50 animate-pulse">
-                    <Ban className="text-rose-500 w-8 h-8 drop-shadow-[0_0_10px_rgba(244,63,94,0.8)]"/>
-                </div>
-            )}
-            
-            {cell.chip !== null && (
-                <div className={`absolute w-[80%] h-[80%] rounded-full z-20 flex items-center justify-center shadow-[0_4px_6px_rgba(0,0,0,0.7)] border-[2px] transition-all duration-500 cubic-bezier(0.34, 1.56, 0.64, 1)
-                    ${getTeam(cell.chip) === 0 
-                        ? 'bg-gradient-to-br from-blue-600 to-blue-900 border-blue-400/80 shadow-blue-900/50' 
-                        : 'bg-gradient-to-br from-rose-600 to-rose-900 border-rose-400/80 shadow-rose-900/50'}
-                    ${isLast && !isDropping && !animatingOut ? 'scale-110 ring-2 ring-amber-300 ring-offset-1 ring-offset-black' : ''}
-                    ${isDropping ? 'animate-drop-in' : ''}
-                    ${animatingOut ? 'animate-chip-out opacity-0' : ''}
-                `}>
-                    <div className="w-[85%] h-[85%] rounded-full border border-white/20 bg-black/20 flex items-center justify-center backdrop-blur-sm relative">
-                        <ChipContent rank={cell.chipRank} suit={cell.chipSuit} isWild={cell.isWild} locked={cell.locked} />
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}, (prev, next) => prev.cell === next.cell && prev.isHighlight === next.isHighlight && prev.isTarget === next.isTarget && prev.isLast === next.isLast && prev.lastMoveType === next.lastMoveType && prev.isOccupiedError === next.isOccupiedError && prev.animatingOut === next.animatingOut && prev.isWinningChip === next.isWinningChip);
-
-const HandCard = React.memo(({ card, selected, disabled, onClick }) => {
-    if (!card) return <div className="w-14 sm:w-16 lg:w-20 aspect-[2/3] flex-shrink-0 opacity-0"></div>;
-    const imgUrl = getCardImageUrl(card.rank, card.suit);
-    let label = null, labelColor = '';
-    if (card.rank === 'J') {
-        if (isTwoEyedJack(card.rank, card.suit)) { label = "WILD"; labelColor = "bg-emerald-600"; } 
-        else { label = "BUANG"; labelColor = "bg-rose-600"; }
-    }
-    // Ukuran kartu di HP: Lebih kecil, tetapi cukup besar untuk disentuh.
-    const cardSizeClass = "w-14 sm:w-16 lg:w-20"; 
-    
-    return (
-        <div onClick={onClick} className={`relative ${cardSizeClass} aspect-[2/3] flex-shrink-0 bg-white rounded-lg shadow-lg border border-slate-200 cursor-pointer transition-all select-none duration-200 transform will-change-transform
-            ${selected ? '-translate-y-2 sm:-translate-y-6 ring-2 ring-amber-400 z-30 shadow-[0_0_25px_rgba(251,191,36,0.5)] scale-110' : ''} 
-            ${disabled ? 'opacity-50 grayscale brightness-90 cursor-not-allowed' : 'hover:-translate-y-1 sm:hover:-translate-y-3 hover:shadow-xl hover:brightness-105'}
-        `}>
-            <img src={imgUrl} onError={(e)=>e.target.src=''} className="w-full h-full object-contain p-1 rounded-lg" loading="lazy" alt="" />
-            {label && <div className={`absolute -top-2 left-1/2 -translate-x-1/2 px-2 py-[2px] text-[7px] font-black text-white tracking-wider text-center rounded-full ${labelColor} shadow-md whitespace-nowrap z-10 border border-white/50`}>{label}</div>}
-        </div>
-    );
-});
-
-const LogoFourCards = () => (
-    <div className="flex justify-center -space-x-4 mb-4 scale-110">
-        <div className="w-10 h-14 bg-white rounded border border-slate-300 shadow-lg rotate-[-15deg] flex items-center justify-center text-xl text-black">♠</div>
-        <div className="w-10 h-14 bg-white rounded border border-slate-300 shadow-lg rotate-[-5deg] flex items-center justify-center text-xl text-red-600">♥</div>
-        <div className="w-10 h-14 bg-white rounded border border-slate-300 shadow-lg rotate-[5deg] flex items-center justify-center text-xl text-black">♣</div>
-        <div className="w-10 h-14 bg-white rounded border border-slate-300 shadow-lg rotate-[15deg] flex items-center justify-center text-xl text-red-600">♦</div>
+        ))}
     </div>
 );
 
-// --- KOMPONEN LATAR BELAKANG MENU ---
-const MenuBackgroundEffect = () => (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {/* Large Translucent Card Shadow */}
-        <div className="absolute -top-10 -left-10 opacity-[0.05] rotate-[-25deg] scale-150">
-            <div className="w-52 h-80 bg-white/20 rounded-2xl shadow-2xl flex items-center justify-center">
-                 <span className="text-9xl text-amber-500 opacity-70">A♠</span>
+const CardFan = () => (
+    <div className="relative w-16 h-12 shrink-0 transform scale-75 origin-left">
+        {[
+            {color: 'bg-white text-red-500', suit:'♥', rot: -20, x: 0},
+            {color: 'bg-white text-black', suit:'♣', rot: -5, x: 10},
+            {color: 'bg-white text-red-500', suit:'♦', rot: 10, x: 20},
+            {color: 'bg-white text-black', suit:'♠', rot: 25, x: 30},
+        ].map((c, i) => (
+            <div key={i} className={`absolute w-8 h-12 rounded border border-gray-300 shadow-sm flex items-center justify-center text-sm font-bold ${c.color}`} 
+                 style={{transform: `rotate(${c.rot}deg) translateX(${c.x}px)`, zIndex: i, left:0, top:0}}>
+                {c.suit}
             </div>
-        </div>
-        {/* Large Translucent Chip Shadow (Blue Team) */}
-        <div className="absolute -bottom-20 -right-20 opacity-[0.08] rotate-[15deg] scale-[2.0]">
-             <div className="w-40 h-40 rounded-full bg-blue-500/50 flex items-center justify-center">
-                 <Trophy size={80} className="text-blue-200/50"/>
-             </div>
-        </div>
-         {/* Large Translucent Chip Shadow (Red Team) */}
-        <div className="absolute bottom-10 -left-16 opacity-[0.08] rotate-[-5deg] scale-[1.5]">
-             <div className="w-32 h-32 rounded-full bg-rose-500/50 flex items-center justify-center">
-                 <Diamond size={60} className="text-rose-200/50"/>
-             </div>
-        </div>
+        ))}
     </div>
 );
 
-// --- ICON PLAYSTATION (Custom SVG) ---
-const PlayStationIcon = ({ size = 20, className = "text-white" }) => (
-    <svg 
-        xmlns="http://www.w3.org/2000/svg" 
-        width={size} 
-        height={size} 
-        viewBox="0 0 100 100" 
-        className={className} 
-        fill="none" 
-        stroke="currentColor" 
-        strokeWidth="10" 
-        strokeLinecap="round" 
-        strokeLinejoin="round"
-    >
-        {/* Circle (O) */}
-        <circle cx="75" cy="25" r="18" fill="none" stroke="currentColor" /> 
-        {/* Cross (X) */}
-        <path d="M 57 50 L 43 50 M 50 57 L 50 43" strokeWidth="10" stroke="currentColor" /> 
-        {/* Triangle (Steak) */}
-        <path d="M 25 75 L 40 45 L 55 75 Z" fill="none" strokeWidth="10" stroke="currentColor" /> 
-        {/* Square (Kotak) */}
-        <rect x="65" y="65" width="20" height="20" rx="4" fill="none" strokeWidth="10" stroke="currentColor" /> 
-        
-        {/* Lingkaran pusat yang disamarkan (Steak) */}
-        <circle cx="50" cy="50" r="45" fill="none" strokeWidth="6" opacity="0.1" /> 
-        
-        {/* Memposisikan ulang ikon agar lebih terlihat seperti bentuk PlayStation */}
-        <g transform="translate(-20, 0)">
-            {/* Cross (X) */}
-            <path d="M 60 70 L 80 90 M 60 90 L 80 70" strokeWidth="6" stroke="currentColor" /> 
-            {/* Circle (O) */}
-            <circle cx="70" cy="80" r="8" fill="none" stroke="currentColor" strokeWidth="6" /> 
-        </g>
-        <g transform="translate(-40, -15)">
-            {/* Triangle (Steak) */}
-            <path d="M 30 20 L 55 45 L 30 70 Z" fill="none" strokeWidth="6" stroke="currentColor" /> 
-        </g>
-        <g transform="translate(10, 10)">
-            {/* Square (Kotak) */}
-            <rect x="25" y="25" width="20" height="20" rx="4" fill="none" strokeWidth="6" stroke="currentColor" /> 
-        </g>
-        
-    </svg>
-);
+// --- MAIN APP ---
+export default function SequenceGame() {
+  const [user, setUser] = useState(null);
+  const [view, setView] = useState('menu'); 
+  const [gameMode, setGameMode] = useState('offline'); 
+  const [playerName, setPlayerName] = useState('Player 1');
+  const [playerAvatar, setPlayerAvatar] = useState('👴'); 
+  const [playerAvatarType, setPlayerAvatarType] = useState('emoji'); 
+  
+  const [roomCode, setRoomCode] = useState('');
+  const [gameState, setGameState] = useState(null);
+  const [myTeam, setMyTeam] = useState('blue'); 
+  const [notification, setNotification] = useState('');
+  const [timeLeft, setTimeLeft] = useState(300);
+  const [highlightedCells, setHighlightedCells] = useState([]); 
+  const timerRef = useRef(null);
 
+  // States
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [showBotLevels, setShowBotLevels] = useState(false);
+  
+  // Game Over Delay State
+  const [showGameOverScreen, setShowGameOverScreen] = useState(false);
 
-// --- KOMPONEN MODAL INFORMASI GAME (Baru) ---
-const GameInfoModal = ({ onClose }) => (
-    <div className="fixed inset-0 z-[1000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="bg-zinc-900 border border-white/20 p-6 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto animate-drop-in">
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold text-amber-500 flex items-center gap-2">
-                    <MessageSquareText size={20}/> INFORMASI GAME
-                </h3>
-                <button onClick={onClose}><X size={20} className="text-zinc-400"/></button>
-            </div>
-            
-            <div className="bg-zinc-800/50 p-4 rounded-xl mb-6 border border-amber-500/30">
-                <h4 className="text-lg font-extrabold text-amber-300 mb-2">Makna Bermain Sequence:</h4>
-                <p className="text-sm text-zinc-300 italic leading-relaxed">
-                    Bermain Sequence adalah tentang **strategi, antisipasi, dan komunikasi tim**. Ini bukan hanya soal kartu yang Anda miliki, tetapi bagaimana Anda **membaca papan** (board reading) untuk menghambat lawan dan membuka jalan kemenangan bagi tim Anda. Setiap penempatan chip adalah keputusan yang menantang akal dan persahabatan!
-                </p>
-            </div>
+  // Interstitial States
+  const [interstitialStep, setInterstitialStep] = useState(0); 
 
-            <h4 className="text-lg font-bold text-white mb-3">Panduan Aturan Singkat:</h4>
-            <div className="text-sm text-zinc-300 space-y-3 leading-relaxed">
-                <p><strong>Tujuan:</strong> Buat **3 baris** (sequence) yang terdiri dari 5 chip warna Anda.</p>
-                <p><strong>Kartu Jack:</strong></p>
-                <ul className="list-disc pl-5 space-y-1">
-                    <li><span className="text-rose-400 font-bold">Jack Dua Mata:</span> Wild Card (Taruh di mana saja). **Tidak bisa menimpa chip (sudah terisi)**.</li>
-                    <li><span className="text-rose-400 font-bold">Jack Satu Mata:</span> Remove (Buang chip lawan yang **BELUM terkunci**).</li>
-                </ul>
-                <p><strong>Kunci (Lock) & Simpang:</strong> Baris yang sudah jadi terkunci **permanen**. Anda hanya boleh menggunakan **satu chip non-corner** yang terkunci (locked) dari tim Anda sebagai simpang untuk membuat baris baru. Chip sudut selalu dapat digunakan.</p>
-            </div>
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [disconnectTime, setDisconnectTime] = useState(null);
+  const [gameOverReason, setGameOverReason] = useState(null); 
+  
+  // Settings
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [vibrationEnabled, setVibrationEnabled] = useState(true);
+  const [hintsEnabled, setHintsEnabled] = useState(true); 
+  
+  const [chatMessage, setChatMessage] = useState('');
+  const [unreadMsg, setUnreadMsg] = useState(false);
+  const [consecutiveMissedTurns, setConsecutiveMissedTurns] = useState(0);
 
-            <div className="mt-8 pt-4 border-t border-zinc-700 text-center">
-                <p className="text-[10px] text-zinc-500 mb-1">Dibuat dengan 🔥 oleh:</p>
-                <p className="text-sm font-black text-amber-400">KARYA SETIAWAN</p>
-                <p className="text-xs text-rose-300 mt-2">
-                    Jangan lupa mampir di tempat makan <span className="font-bold">Ayam Bakar Spesial Bibir By WKA</span>!
-                </p>
-            </div>
-        </div>
-    </div>
-);
-
-// --- KOMPONEN MODAL PILIH BOT ---
-const BotSelectModal = ({ botMessages, onSelect, onClose }) => (
-    <div className="fixed inset-0 z-[1000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="bg-gradient-to-br from-zinc-900 to-black border border-amber-500/50 p-1 rounded-2xl w-full max-w-sm animate-drop-in shadow-[0_0_50px_rgba(245,158,11,0.3)]">
-            <div className="bg-[#111] rounded-xl p-6 relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-4 opacity-20"><Brain size={100} className="text-amber-500"/></div>
-                <h3 className="text-xl font-black text-white mb-1 uppercase tracking-wider relative z-10">Tingkat Kesulitan</h3>
-                <p className="text-zinc-400 text-xs mb-6 relative z-10">Pilih level otak robot Anda.</p>
-                <div className="space-y-3 relative z-10">
-                    {Object.entries(botMessages).map(([key, value]) => (
-                        <button 
-                            key={key} 
-                            onClick={() => onSelect(key)} 
-                            className="w-full py-4 bg-gradient-to-r from-indigo-600 to-indigo-800 hover:from-indigo-500 hover:to-indigo-700 rounded-lg font-black uppercase tracking-widest text-sm transition-all border border-indigo-400/30 flex items-center justify-between px-4 group"
-                        >
-                           <span>{key === 'easy' ? 'MUDAH' : key === 'medium' ? 'SEDANG' : 'SULIT'}</span> 
-                           <span className="text-indigo-200 flex items-center gap-1">
-                               <value.icon size={18} className="text-indigo-300 group-hover:scale-110 transition-transform"/>
-                               <span className="text-xs font-normal italic opacity-80">{value.quote.split('!')[0]}</span>
-                           </span>
-                        </button>
-                    ))}
-                </div>
-                <button onClick={onClose} className="mt-6 w-full py-2 text-zinc-500 text-xs font-bold hover:text-white transition-colors">KEMBALI</button>
-            </div>
-        </div>
-    </div>
-);
-
-// --- KOMPONEN MODAL SELEKSI PROFIL ---
-const ProfileSelectorModal = ({ currentName, currentAvatar, onSave, onClose }) => {
-    const [name, setName] = useState(currentName);
-    const [avatar, setAvatar] = useState(currentAvatar || ALL_AVATARS[0].icon); // Menggunakan icon sebagai nilai default
-    
-    const handleSave = () => {
-        if (name.trim()) onSave(name, avatar);
-        onClose();
+  // --- NETWORK MONITORING ---
+  useEffect(() => {
+    const handleOnline = () => { setIsOnline(true); setDisconnectTime(null); };
+    const handleOffline = () => { setIsOnline(false); setDisconnectTime(Date.now()); };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
     };
+  }, []);
 
-    return (
-        <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-zinc-900 border border-white/10 p-6 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl animate-drop-in">
-                <h3 className="text-xl font-bold text-amber-500 mb-4 flex items-center gap-2"><Edit3 size={20}/> Edit Profil Pemain</h3>
-                
-                <div className="flex items-center gap-4 mb-6">
-                    {/* Main Avatar Display (Emoji) */}
-                    <div className="flex items-center justify-center w-16 h-16 rounded-full ring-4 ring-amber-500/50 bg-white/10">
-                        <span className="text-3xl" style={{ fontSize: '2.5rem', lineHeight: 1 }}>{avatar}</span>
-                    </div>
-                    <input 
-                        type="text" 
-                        value={name} 
-                        onChange={e => setName(e.target.value)} 
-                        className="flex-grow bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 font-bold tracking-wide" 
-                        placeholder="Nama Pemain"
-                    />
-                </div>
-                
-                <h4 className="text-sm font-bold text-zinc-300 mb-3">Pilih Karakter Favoritmu (Total 20):</h4>
-                <div className="grid grid-cols-5 sm:grid-cols-7 gap-3 h-48 overflow-y-auto p-2 bg-black/30 rounded-xl">
-                    {ALL_AVATARS.map((a, i) => (
-                        <button 
-                            key={i} 
-                            onClick={() => setAvatar(a.icon)} // Simpan ikon emoji sebagai state
-                            className={`p-1 rounded-lg transition-all ${avatar === a.icon ? 'ring-2 ring-emerald-500 scale-105 shadow-lg' : 'hover:bg-zinc-700/50'}`}
-                        >
-                            {/* Grid Item Avatar Display (Emoji) */}
-                            <div className="flex items-center justify-center w-full aspect-square rounded-full object-cover border border-white/10 bg-black/20">
-                                <span className="text-xl">{a.icon}</span>
-                            </div>
-                            <p className="text-[8px] mt-1 text-zinc-400">{a.label}</p>
-                        </button>
-                    ))}
-                </div>
-                
-                <div className="flex justify-end gap-3 mt-6">
-                    <button onClick={onClose} className="px-6 py-3 bg-zinc-700 hover:bg-zinc-600 rounded-lg font-bold text-white transition-colors">BATAL</button>
-                    <button onClick={handleSave} disabled={!name.trim()} className="px-6 py-3 bg-amber-600 hover:bg-amber-500 rounded-lg font-bold text-white transition-colors disabled:opacity-50">SIMPAN</button>
-                </div>
-            </div>
-        </div>
-    );
-};
+  // Long Disconnect Check
+  useEffect(() => {
+      let interval;
+      if (!isOnline && disconnectTime) {
+          interval = setInterval(() => {
+              if (Date.now() - disconnectTime > 45000) { 
+                  setGameOverReason('disconnect');
+                  setGameState(null); 
+              }
+          }, 1000);
+      }
+      return () => clearInterval(interval);
+  }, [isOnline, disconnectTime]);
 
+  // --- AUTH ---
+  useEffect(() => {
+    signInAnonymously(auth).catch(console.error);
+    return onAuthStateChanged(auth, setUser);
+  }, []);
 
-// --- LOGIKA UTAMA GAME ---
-function SequenceGameInternal() {
-    const [user, setUser] = useState(null);
-    const [appMode, setAppMode] = useState('menu'); 
-    const [botLevel, setBotLevel] = useState('easy'); 
-    const [roomId, setRoomId] = useState(null);
-    const [playerIndex, setPlayerIndex] = useState(null);
-    const [maxPlayers, setMaxPlayers] = useState(2);
-    const [board, setBoard] = useState([]);
-    const [deck, setDeck] = useState([]);
-    const [hands, setHands] = useState({0:[], 1:[], 2:[], 3:[]});
-    const [turn, setTurn] = useState(0);
-    const [winner, setWinner] = useState(null);
-    const [showGameOverModal, setShowGameOverModal] = useState(false);
-    const [showForfeitModal, setShowForfeitModal] = useState(false); 
-    const [lastMove, setLastMove] = useState(null);
-    const [chats, setChats] = useState([]);
-    const [showChat, setShowChat] = useState(false);
-    const [toast, setToast] = useState(null);
-    const [timeLeft, setTimeLeft] = useState(TURN_DURATION);
-    const [soundMode, setSoundMode] = useState('sound'); 
-    const [selectedCardIdx, setSelectedCardIdx] = useState(null);
-    const [message, setMessage] = useState("");
-    const [scores, setScores] = useState({0:0, 1:0});
-    const [winningLines, setWinningLines] = useState([]); 
-    const [scoredIds, setScoredIds] = new useState(new Set()); 
-    const [playerName, setPlayerName] = useState("Player 1");
-    const [playerAvatar, setPlayerAvatar] = useState(ALL_AVATARS[0].icon); // State Avatar: Ganti ke ikon emoji
-    const [playerNamesList, setPlayerNamesList] = useState({});
-    const [playerAvatarsList, setPlayerAvatarsList] = useState({}); // State Avatars List
-    const [loadingText, setLoadingText] = useState("");
-    const [unreadCount, setUnreadCount] = useState(0);
-    const [errorCell, setErrorCell] = useState(null); 
-    const [roomDetails, setRoomDetails] = useState(null); 
-    const [joinCodeInput, setJoinCodeInput] = useState(''); 
-    const [isDealing, setIsDealing] = useState(false);
-    const [visualPlayedCard, setVisualPlayedCard] = useState(null);
-    const [consecutiveTimeouts, setConsecutiveTimeouts] = useState(0); // Tracking skip berturut-turut
-    
-    const [showInfoModal, setShowInfoModal] = useState(false); 
-    const [showBotSelectModal, setShowBotSelectModal] = useState(false);
-    const [showProfileModal, setShowProfileModal] = useState(false); 
-    const [animatingOutCells, setAnimatingOutCells] = new useState(new Set()); 
+  // --- GAME OVER DELAY EFFECT ---
+  useEffect(() => {
+      if (gameState?.winner || gameOverReason) {
+          // Wait 3 seconds before showing the game over screen
+          const timer = setTimeout(() => {
+              setShowGameOverScreen(true);
+          }, 3000);
+          return () => clearTimeout(timer);
+      } else {
+          setShowGameOverScreen(false);
+      }
+  }, [gameState?.winner, gameOverReason]);
 
-    const audioCtxRef = useRef(null);
-    
-    const botMessages = useMemo(() => ({
-        easy: { icon: Heart, quote: "Jangan remehkan! Latihlah ketelitian Anda." },
-        medium: { icon: Shield, quote: "Tantangan baru menanti. Fokus pada strategi dasar!" },
-        hard: { icon: Zap, quote: "Siap-siap, otak robot ini tidak akan memberi ampun. Buktikan yang terbaik!" },
-    }), []);
-
-    // --- STYLE INJECTION ---
-    useEffect(() => {
-        const style = document.createElement('style');
-        style.innerHTML = `
-            @keyframes chipOut { 
-                0% { transform: scale(1) rotate(0deg); opacity: 1; } 
-                30% { transform: scale(1.2) rotate(10deg); opacity: 0.8; }
-                100% { transform: scale(0.5) translateY(-50px) rotate(-90deg); opacity: 0; } 
-            }
-            .animate-chip-out { animation: chipOut 1.5s ease-out forwards; }
-            @keyframes dropIn { 0% { transform: translateY(-300%) scale(1.5); opacity: 0; } 60% { transform: translateY(10%) scale(1); opacity: 1; } 80% { transform: translateY(-5%); } 100% { transform: translateY(0); } }
-            .animate-drop-in { animation: dropIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); }
-            @keyframes dealCard { 0% { transform: translate(0,0) scale(0.1); opacity: 0; } 50% { transform: translate(0,0) scale(1.2); opacity: 1; } 100% { transform: translate(var(--tx), var(--ty)) scale(1); opacity: 0; } }
-            @keyframes opponentSidePlay { 0% { transform: scale(0.5) translateY(50px); opacity: 0; } 20% { transform: scale(1.2) translateY(0); opacity: 1; } 80% { transform: scale(1) translateY(0); opacity: 1; } 100% { transform: scale(0.8) translateY(-50px); opacity: 0; } }
-            .animate-opponent-play { animation: opponentSidePlay 2.5s ease-in-out forwards; }
-            .scrollbar-hide::-webkit-scrollbar { display: none; }
-            .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-            .text-gradient-gold { background: linear-gradient(to bottom, #fcd34d, #d97706); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-            
-            /* Perubahan warna untuk tampilan lebih terang/enak dipandang: Azure Blue Theme */
-            .bg-felt-pattern { 
-                background-color: #154360; /* Vibrant Azure Blue Base (Darker side of bright blue) */
-                background-image: radial-gradient(#275F90 1px, transparent 1px); 
-                background-size: 20px 20px; 
-            }
-            .bg-board-base { background-color: #275F90; } /* Medium Azure Blue, latar belakang papan */
-
-            /* Animasi Piala Game Over */
-            @keyframes trophySpin {
-                0% { transform: translateY(-50px) rotate(0deg) scale(0.5); opacity: 0; } 
-                50% { transform: translateY(0) rotate(360deg) scale(1.1); opacity: 1; }
-                100% { transform: translateY(0) rotate(360deg) scale(1); opacity: 1; }
-            }
-            .animate-trophy-spin { animation: trophySpin 1.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-
-            /* SVG Lines Style */
-            .winning-line { 
-                stroke-dasharray: 200; 
-                stroke-dashoffset: 200; 
-                animation: drawLine 1s cubic-bezier(0.4, 0, 0.2, 1) forwards; 
-                filter: drop-shadow(0 0 8px rgba(0,0,0,0.8)); 
-                z-index: 50;
-            }
-            @keyframes drawLine { to { stroke-dashoffset: 0; } }
-            
-            /* Confetti style for Game Over */
-            .confetti {
-                position: absolute;
-                width: 10px;
-                height: 10px;
-                background-color: #fff;
-                opacity: 0;
-                animation: fall 3s ease-in infinite;
-            }
-
-            @keyframes fall {
-                0% { transform: translateY(-100px) rotate(0deg); opacity: 1; }
-                100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
-            }
-        `;
-        document.head.appendChild(style);
-        return () => { if(document.head.contains(style)) document.head.removeChild(style); };
-    }, []);
-
-    // --- AUTH ---
-    useEffect(() => {
-        const init = async () => {
-            if (isOnlineAvailable && auth) {
-                try { 
-                    if (isCustomConfig || typeof __firebase_config === 'undefined') {
-                        // Jika menggunakan konfigurasi statis (Netlify), sign-in anonymous.
-                        await signInAnonymously(auth);
-                    }
-                    else if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        // Jika di Canvas, gunakan token kustom
-                        await signInWithCustomToken(auth, __initial_auth_token); 
-                    }
-                    else {
-                        // Fallback aman untuk Canvas
-                        await signInAnonymously(auth); 
-                    }
-                } catch (e) { console.error("Auth Sign-In Error (Initial):", e); }
-            } else {
-                 // Fallback untuk mode offline/dev tanpa Firebase
-                 setUser({uid: 'offline-user', isAnonymous: true});
-            }
-        }; 
-        init();
-        if (isOnlineAvailable && auth) {
-             const unsub = onAuthStateChanged(auth, (u) => setUser(u || null));
-             return () => unsub();
-        } 
-    }, []);
-
-    const playEffect = useCallback((type) => {
-        if (soundMode === 'silent') return;
-        if (soundMode === 'vibrate') { if (navigator.vibrate) navigator.vibrate(50); return; }
-        try {
-            if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
-            const ctx = audioCtxRef.current; const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.connect(gain); gain.connect(ctx.destination); const now = ctx.currentTime;
-            if (type === 'win') { osc.type = 'triangle'; osc.frequency.setValueAtTime(523.25, now); osc.frequency.linearRampToValueAtTime(783.99, now + 0.2); gain.gain.setValueAtTime(0.2, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 1); osc.start(now); osc.stop(now + 1); }
-            else if (type === 'move') { osc.type = 'sine'; osc.frequency.setValueAtTime(400, now); osc.frequency.exponentialRampToValueAtTime(600, now + 0.1); gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2); osc.start(now); osc.stop(now + 0.2); }
-            else if (type === 'punch') { osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, now); osc.frequency.linearRampToValueAtTime(50, now + 0.8); gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8); osc.start(now); osc.stop(now + 0.8); }
-            else if (type === 'wild') { osc.type = 'sine'; osc.frequency.setValueAtTime(800, now); osc.frequency.linearRampToValueAtTime(1200, now + 0.1); gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5); osc.start(now); osc.stop(now + 0.5); }
-            else if (type === 'error') { osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now); osc.frequency.exponentialRampToValueAtTime(50, now + 0.2); gain.gain.setValueAtTime(0.2, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2); osc.start(now); osc.stop(now + 0.2); }
-        } catch (e) {}
-    }, [soundMode]);
-
-    // --- DEAD CARD Logic ---
-    useEffect(() => {
-        if (!board.length || winner !== null || isDealing) return;
-        const isMyTurn = (appMode === 'offline-bot' && turn === 0) || (appMode === 'online-game' && turn === playerIndex);
-        if (!isMyTurn) return;
-
-        const myHand = hands[turn] || [];
-        const deadCardIndices = [];
-
-        myHand.forEach((card, idx) => {
-            if (card.rank === 'J') return;
-            let isDead = true;
-            for(let r=0; r<10; r++) for(let c=0; c<10; c++) {
-                const cell = board[r][c];
-                // KARTU MATI: Hanya jika SEMUA posisi kartu di papan sudah terisi chip (chip !== null)
-                if (cell.rank === card.rank && cell.suit === card.suit && cell.chip === null) { isDead = false; break; }
-            }
-            if (isDead) deadCardIndices.push(idx);
-        });
-
-        if (deadCardIndices.length > 0) {
-            playEffect('punch');
-            const newHand = [...myHand]; const newDeck = [...deck];
-            for (let i = deadCardIndices.length - 1; i >= 0; i--) {
-                newHand.splice(deadCardIndices[i], 1);
-                // Tambahkan kartu baru hanya jika dek tidak kosong
-                if (newDeck.length > 0) newHand.push(newDeck.shift());
-            }
-            
-            // Perbarui state lokal dan Firestore
-            const updatedHands = {...hands, [turn]: newHand};
-            setHands(updatedHands); 
-            setDeck(newDeck);
-            
-            if (appMode === 'online-game') {
-                updateDoc(getRoomRef(roomId), { 
-                    hands: JSON.stringify(updatedHands), 
-                    deck: JSON.stringify(newDeck),
-                    // Tidak mengubah giliran/waktu karena ini adalah aksi Dead Card, bukan move
-                }).catch(console.error);
-            }
-        }
-    }, [turn, board, hands, deck, winner, isDealing, appMode, playerIndex, roomId, playEffect]);
-
-    // --- GAME OVER DELAY EFFECT ---
-    useEffect(() => {
-        if (winner !== null && !showGameOverModal) {
-            // Jeda 3 detik agar pemain bisa melihat papan dan garis kemenangan
-            const timer = setTimeout(() => {
-                setShowGameOverModal(true);
-            }, 3000);
-            return () => clearTimeout(timer);
-        }
-    }, [winner, showGameOverModal]);
-
-    // --- TIMER DAN GUGUR LOGIC (2x Timeout = Forfeit) ---
-    useEffect(() => { 
-        // Timer hanya berjalan jika bukan mode menu, tidak ada pemenang, dan bukan giliran lawan (jika bot)
-        const isTimerRunning = !winner && (appMode === 'online-game' || (appMode === 'offline-bot' && turn === 0));
-
-        if (isTimerRunning) { 
-            const timer = setInterval(() => {
-                setTimeLeft(p => {
-                    if (p > 0) return p - 1;
-                    
-                    // Waktu Habis - Pindahkan Giliran
-                    clearInterval(timer); // Hentikan timer
-                    
-                    if (appMode === 'offline-bot' || (appMode === 'online-game' && turn === playerIndex)) {
-                        // Jika sudah 2 kali timeout berturut-turut, GUGUR
-                        if (consecutiveTimeouts >= 1) {
-                            const opponentTeam = getTeam(turn) === 0 ? 1 : 0;
-                            const forfeitMessage = `Waktu habis 2x! Pemain ${playerNamesList[turn] || 'Anda'} GUGUR.`;
-                            
-                            if (appMode === 'online-game') {
-                                // PENTING: Update skor dan pemenang ke Firestore (Security Rules harus mengizinkan Host/Admin)
-                                updateDoc(getRoomRef(roomId), { 
-                                    winner: opponentTeam, 
-                                    chats: arrayUnion({ senderName: "WASIT", text: forfeitMessage, senderIndex: -1 }) 
-                                }).catch(console.error);
-                            }
-                            setWinner(opponentTeam); // Menetapkan pemenang
-                            setConsecutiveTimeouts(0);
-                            setMessage(forfeitMessage);
-                            return 0;
-                        }
-
-                        // Timeout pertama/kedua - Lompati giliran
-                        const nextTurn = (turn + 1) % maxPlayers;
-                        const skipMessage = `Waktu habis! Giliran ${playerNamesList[turn] || 'Anda'} hangus.`;
-                        
-                        if (appMode === 'online-game') {
-                             updateDoc(getRoomRef(roomId), { 
-                                turn: nextTurn, 
-                                consecutiveTimeouts: consecutiveTimeouts + 1,
-                                timeLeft: TURN_DURATION,
-                                chats: arrayUnion({ senderName: "WASIT", text: skipMessage, senderIndex: -1 }) 
-                             }).catch(console.error);
-                        } else {
-                            setTurn(nextTurn);
-                            setConsecutiveTimeouts(consecutiveTimeouts + 1);
-                            setTimeLeft(TURN_DURATION);
-                            setMessage(skipMessage);
-                        }
-                    }
-                    return 0;
-                });
-            }, 1000); 
-            return () => clearInterval(timer); 
-        } else {
-            // Jika bukan giliran Anda (Bot atau lawan Online), pastikan timer tidak jalan
-            const isOpponentTurn = appMode === 'offline-bot' && turn === 1;
-            if (isOpponentTurn) setTimeLeft(TURN_DURATION); // Freeze timer 5:00
-        }
-    }, [turn, winner, appMode, playerIndex, consecutiveTimeouts, maxPlayers, roomId, playerNamesList]);
-
-
-    // --- SYNC ---
-    useEffect(() => {
-        if (!isOnlineAvailable || (appMode !== 'online-game' && appMode !== 'online-share') || !roomId || !user) return;
-        
-        const unsub = onSnapshot(getRoomRef(roomId), (snap) => {
-            if (snap.exists()) {
-                const data = snap.data(); 
-                setRoomDetails({ id: snap.id, ...data });
-                if (appMode === 'online-share' && data.players?.length === data.maxPlayers) setAppMode('online-game');
-                
-                // DATA GAME
-                setBoard(safeParse(data.board, [])); setDeck(safeParse(data.deck, [])); setHands(safeParse(data.hands, {}));
-                setTurn(data.turn); setWinner(data.winner); setLastMove(data.lastMove); setScores(data.scores || {0:0, 1:0}); 
-                setWinningLines(safeParse(data.winningLines, [])); setScoredIds(new Set(safeParse(data.scoredIds, [])));
-                
-                // DATA PEMAIN & TIMER
-                if(data.playerNames) setPlayerNamesList(data.playerNames);
-                if(data.playerAvatars) setPlayerAvatarsList(data.playerAvatars); // Ambil Avatars
-                if(data.consecutiveTimeouts !== undefined) setConsecutiveTimeouts(data.consecutiveTimeouts); // Ambil Timeout Count
-                
-                // JANGAN UPDATE timeLeft DARI FIRESTORE, biarkan timer berjalan lokal.
-                // setTimeLeft(data.timeLeft || TURN_DURATION); 
-
-                const newChats = data.chats || []; if (newChats.length > chats.length && !showChat) setUnreadCount(prev => prev + 1); setChats(newChats);
-                
-                if (data.lastPlayedCard && appMode === 'online-game') {
-                     if (data.turn === playerIndex) { }
-                     else { setVisualPlayedCard(data.lastPlayedCard); setTimeout(()=>setVisualPlayedCard(null), 2500); }
-                }
-                
-                if (data.winner !== null) { 
-                    setMessage("PERMAINAN SELESAI"); 
-                } 
-                else { const mover = data.playerNames?.[data.turn] || `P${data.turn+1}`; setMessage(data.turn === playerIndex ? "GILIRAN ANDA" : `GILIRAN ${mover.toUpperCase()}`); }
-            } else { setAppMode('menu'); setToast({sender:"SYSTEM", text:"Room bubar.", type:'error'}); }
-        }); return () => unsub();
-    }, [appMode, roomId, user, showGameOverModal, chats.length, showChat, playerIndex, roomDetails?.players?.length]);
-
-    // --- LOGIKA CEK SEQUENCE MUTLAK (STRICT INTERSECTION & EXTENSION) ---
-    const checkNewSequences = (boardState, player, currentScoredIds, existingWinningLines) => {
-        let newLines = [], newIds = []; 
-        const team = getTeam(player); 
-        const dirs = [[0,1], [1,0], [1,1], [1,-1]]; 
-        
-        // Cek apakah cell milik tim (atau sudut)
-        const isOwner = (r, c) => { 
-            if (r<0 || r>=10 || c<0 || c>=10) return false; 
-            const cell = boardState[r][c]; 
-            return cell.type === 'corner' || (cell.chip !== null && getTeam(cell.chip) === team); 
-        };
-
-        // Kumpulkan semua titik chip yang SUDAH TERKUNCI (locked) milik tim ini.
-        const lockedPoints = new Set();
-        existingWinningLines.filter(l => getTeam(l.team) === team).forEach(l => {
-            l.line.forEach(p => {
-                const cell = boardState[p.r][p.c];
-                // HANYA chip non-corner yang terkunci (locked chip) yang diperhitungkan sebagai simpang/perpanjangan.
-                if (cell.type !== 'corner' && cell.locked) {
-                    lockedPoints.add(`${p.r},${p.c}`);
-                }
-            });
-        });
-
-        for(let r=0; r<10; r++) {
-            for(let c=0; c<10; c++) {
-                if(!isOwner(r,c)) continue;
-                
-                for(let d of dirs) {
-                    let potentialLine = [];
-                    for(let k=0; k<5; k++) { 
-                        const nr=r+k*d[0], nc=c+k*d[1]; 
-                        if(isOwner(nr, nc)) potentialLine.push({r:nr, c:nc}); else break; 
-                    }
-
-                    if(potentialLine.length === 5) {
-                        const safeId = `${potentialLine[0].r},${potentialLine[0].c}-${potentialLine[4].r},${potentialLine[4].c}`;
-                        const safeIdRev = `${potentialLine[4].r},${potentialLine[4].c}-${potentialLine[0].r},${potentialLine[0].c}`;
-                        
-                        if(!currentScoredIds.has(safeId) && !currentScoredIds.has(safeIdRev)) {
-                            
-                            let sharedLockedChipCount = 0;
-                            potentialLine.forEach(p => {
-                                const coord = `${p.r},${p.c}`;
-                                if (lockedPoints.has(coord)) {
-                                    sharedLockedChipCount++;
-                                }
-                            });
-
-                            if (sharedLockedChipCount <= 1) {
-                                newLines.push(potentialLine);
-                                newIds.push(safeId);
-                            } 
-                        }
-                    }
-                }
-            }
-        } 
-        return { newLines, newIds };
-    };
-
-    const executeMove = (r, c, remove, idx, moveType = 'normal', cardUsed = null) => {
-        if (remove) {
-            setAnimatingOutCells(prev => new Set(prev).add(`${r},${c}`));
-            playEffect('punch');
-
-            setTimeout(() => {
-                const newBoard = JSON.parse(JSON.stringify(board));
-                // Pastikan chip yang dihapus memang chip lawan
-                if (newBoard[r][c].chip !== null && getTeam(newBoard[r][c].chip) !== getTeam(turn) && !newBoard[r][c].locked) {
-                    newBoard[r][c].chip = null; 
-                    newBoard[r][c].isWild = false;
-                    newBoard[r][c].chipRank = null;
-                    newBoard[r][c].chipSuit = null;
-                    finalizeMove(newBoard, r, c, remove, idx, moveType);
-                } else {
-                    console.error("DEBUG: Coba hapus chip tidak valid.");
-                    setToast({sender:'SYS', text:'Gagal menghapus! (Chip terkunci/bukan lawan)', type:'error'});
-                }
-                setAnimatingOutCells(prev => {
-                    const next = new Set(prev);
-                    next.delete(`${r},${c}`);
-                    return next;
-                });
-            }, 600); 
-        } else {
-             const newBoard = JSON.parse(JSON.stringify(board));
-             // Pastikan kotak kosong sebelum menempatkan
-             if (newBoard[r][c].chip === null) {
-                 newBoard[r][c].chip = turn; newBoard[r][c].isWild = (moveType === 'wild');
-                 if (cardUsed) {
-                     newBoard[r][c].chipRank = cardUsed.rank;
-                     newBoard[r][c].chipSuit = cardUsed.suit;
-                 }
-                 if(moveType==='wild') playEffect('wild'); else playEffect('move');
-                 finalizeMove(newBoard, r, c, remove, idx, moveType);
-             } else {
-                 console.error("DEBUG: Coba menempatkan di kotak terisi.");
-                 setToast({sender:'SYS', text:'Kotak sudah terisi!', type:'error'});
-                 // Jangan lanjutkan move jika validasi gagal di sini.
+  // --- FIRESTORE SYNC & INTERSTITIAL TRIGGER ---
+  useEffect(() => {
+    if (gameMode === 'online' && roomCode && user) {
+      const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
+      const unsub = onSnapshot(roomRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (typeof data.board === 'string') data.board = JSON.parse(data.board);
+          
+          if (data.chat && gameState && data.chat.length > (gameState.chat?.length || 0)) {
+             if (!showChat) {
+               setUnreadMsg(true);
+               playSound('message');
              }
+          }
+          
+          // DETECT NEW PLAYER JOIN (SIGNAL TIMBUL)
+          if (gameState && data.players.length > gameState.players.length) {
+              playSound('join');
+              setNotification("Pemain Baru Bergabung!");
+              setTimeout(() => setNotification(''), 2000);
+          }
+
+          if (data.status === 'playing' && gameState?.status !== 'playing') {
+               triggerInterstitial(() => {
+                   setView('game');
+               });
+          }
+
+          setGameState(data);
+          const me = data.players.find(p => p.uid === user.uid);
+          if (me) setMyTeam(me.team);
+          
+          if (data.currentTurnIndex !== gameState?.currentTurnIndex) {
+            setTimeLeft(300); 
+            setHighlightedCells([]); 
+            setConsecutiveMissedTurns(0); 
+          }
         }
-    };
-
-    const resetGameState = () => {
-        setRoomId(null);
-        setPlayerIndex(null);
-        setMaxPlayers(2);
-        setBoard([]);
-        setDeck([]);
-        setHands({0:[], 1:[], 2:[], 3:[]});
-        setTurn(0);
-        setWinner(null);
-        setShowGameOverModal(false);
-        setLastMove(null);
-        setChats([]);
-        setShowChat(false);
-        setScores({0:0, 1:0});
-        setWinningLines([]);
-        setScoredIds(new Set());
-        setLoadingText("");
-        setUnreadCount(0);
-        setErrorCell(null);
-        setRoomDetails(null);
-        setJoinCodeInput('');
-        setIsDealing(false);
-        setVisualPlayedCard(null);
-        setAnimatingOutCells(new Set());
-        setConsecutiveTimeouts(0); // Reset timeouts
-        setTimeLeft(TURN_DURATION); // Reset timer
-    };
-
-
-    const finalizeMove = (newBoard, r, c, remove, idx, moveType) => {
-        let newScores = {...scores}, newWinningLines = [...winningLines], team = getTeam(turn), hasWon = false;
-        let currentScoredIds = scoredIds; 
-        
-        // Reset consecutive timeouts on a successful move
-        setConsecutiveTimeouts(0); 
-
-        if (!remove) {
-            const { newLines, newIds } = checkNewSequences(newBoard, turn, currentScoredIds, newWinningLines);
-            
-            if (newLines.length > 0) {
-                // Perhitungan skor yang aman (tidak bisa dimanipulasi klien)
-                const scoreIncrease = newLines.length;
-                newScores[team] += scoreIncrease; 
-                newWinningLines = [...newWinningLines, ...newLines.map(line => ({ team, line }))];
-                newIds.forEach(id => currentScoredIds.add(id));
-                
-                // KUNCI CHIP (LOCK) PERMANEN
-                newLines.forEach(line => line.forEach(p => { 
-                    if(newBoard[p.r][p.c].type !== 'corner') {
-                        newBoard[p.r][c].locked = true; 
-                    }
-                }));
-                
-                playEffect('win');
-                if (newScores[team] >= WINNING_SCORE) { 
-                    setWinner(team); 
-                    hasWon = true; 
-                }
-            }
-        }
-
-        const newHand = [...hands[turn]]; const playedCard = newHand[idx]; newHand.splice(idx, 1);
-        let newDeck = [...deck]; if (newDeck.length > 0) { const newCard = newDeck.shift(); if (newCard) newHand.push(newCard); }
-        const newHands = {...hands, [turn]: newHand};
-        let nextTurn = (turn + 1) % maxPlayers;
-
-        setBoard(newBoard); setHands(newHands); setDeck(newDeck); setTurn(nextTurn);
-        setScores(newScores); setWinningLines(newWinningLines); setScoredIds(new Set(currentScoredIds)); 
-        setSelectedCardIdx(null); setLastMove(remove ? null : {r,c, type: moveType}); setTimeLeft(TURN_DURATION);
-        if (!hasWon) setMessage(appMode==='offline-bot' && nextTurn===1 ? "Komputer Mikir..." : `Giliran ${playerNamesList[nextTurn] || 'Lawan'}`);
-
-        if (appMode === 'online-game') {
-            // Update ke Firestore - Security Rules harus memverifikasi bahwa perubahan board/turn/hands sah
-            updateDoc(getRoomRef(roomId), {
-                board: JSON.stringify(newBoard), 
-                hands: JSON.stringify(newHands), 
-                deck: JSON.stringify(newDeck),
-                turn: nextTurn, 
-                // PENTING: Skor/Pemenang harus diverifikasi/dihitung ulang di sisi server (jika menggunakan Cloud Functions)
-                // Namun, karena hanya menggunakan Firestore Rules, kita mengandalkan Aturan untuk memblokir perubahan yang tidak sah.
-                winner: hasWon ? team : null, 
-                scores: newScores, 
-                lastMove: remove ? null : {r,c, type: moveType},
-                winningLines: JSON.stringify(newWinningLines), 
-                scoredIds: JSON.stringify(Array.from(currentScoredIds)), 
-                lastPlayedCard: playedCard,
-                consecutiveTimeouts: 0, // Reset di Firestore juga
-            }).catch(e => {
-                 console.error("FIREBASE UPDATE ERROR:", e);
-                 setToast({sender:'SYS', text:'Gagal sinkronisasi ke server! Cek koneksi/Rules.', type:'error'});
-            });
-        }
+      });
+      return () => unsub();
     }
+  }, [gameMode, roomCode, user, gameState?.currentTurnIndex, showChat, gameState?.status, gameState?.players?.length]);
 
-    const botMove = (currBoard, currHand, currDeck) => {
-        if (!currHand?.length) return; const moves = [];
-        currHand.forEach((c, idx) => {
-            for(let r=0; r<10; r++) for(let k=0; k<10; k++) {
-                const cell = currBoard[r][k];
-                if(cell.type === 'corner' || cell.locked) continue;
-                if(c.rank === 'J') {
-                    if(isTwoEyedJack(c.rank, c.suit) && !cell.chip) moves.push({r,c:k,idx, rm:false, type:'wild', score: 10, card: c});
-                    if(isOneEyedJack(c.rank, c.suit) && cell.chip!==null && getTeam(cell.chip)===0 && !cell.locked) moves.push({r,c:k,idx, rm:true, type:'remove', score: 20, card: c});
-                } else if (cell.rank===c.rank && cell.suit===c.suit && !cell.chip) {
-                     const score = checkNeighbors(currBoard, r, k, 1) * 10 + Math.random();
-                     moves.push({r,c:k,idx, rm:false, type:'normal', score, card: c});
-                }
-            }
+  // --- TIMER ---
+  useEffect(() => {
+    if (gameState && !gameState.winner && !gameOverReason && interstitialStep === 0) {
+      timerRef.current = setInterval(() => {
+        setTimeLeft(t => {
+          if (t <= 0) {
+            clearInterval(timerRef.current);
+            handleTurnTimeout();
+            return 0;
+          }
+          return t - 1;
         });
-        if(moves.length > 0) { moves.sort((a,b) => b.score - a.score); executeMove(moves[0].r, moves[0].c, moves[0].rm, moves[0].idx, moves[0].type, moves[0].card); } 
-        else { 
-            // Bot Timeout Logic (simulasi skip)
-            const newTurn = (turn + 1) % maxPlayers;
-            setTurn(newTurn); 
-            setTimeLeft(TURN_DURATION);
-            setMessage("Robot Lewat Giliran"); 
-            // Bot tidak perlu update Firestore.
-        }
-    };
+      }, 1000);
+    } else clearInterval(timerRef.current);
+    return () => clearInterval(timerRef.current);
+  }, [gameState, gameOverReason, interstitialStep]);
 
-    useEffect(() => { if (appMode === 'offline-bot' && turn === 1 && !winner) { const t = setTimeout(() => botMove(board, hands[1], deck), 2000); return () => clearTimeout(t); } }, [turn, appMode, winner, board, hands, deck]);
+  const handleTurnTimeout = async () => {
+      const newMissed = consecutiveMissedTurns + 1;
+      setConsecutiveMissedTurns(newMissed);
 
-    const handleBoardClick = useCallback((r, c) => {
-        if (winner !== null) return;
-        if (appMode === 'online-game' && turn !== playerIndex) { setToast({sender: "SYSTEM", text: "Tunggu giliran!", type: 'error'}); return; }
-        if (selectedCardIdx === null) return;
-        
-        let currentHandIdx = appMode === 'online-game' ? playerIndex : turn;
-        const myHand = hands[currentHandIdx] || []; const card = myHand[selectedCardIdx]; const cell = board[r][c];
-        if (!card || !cell) return;
-        if (cell.type === 'corner') { setErrorCell({r,c}); setTimeout(() => setErrorCell(null), 500); return; }
+      if (newMissed >= 2) {
+         if (gameMode === 'offline') {
+             setGameState(prev => ({ ...prev, winner: 'red' })); 
+         } else {
+            const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
+            const opponentTeam = myTeam === 'blue' ? 'red' : 'blue';
+            await updateDoc(roomRef, { winner: opponentTeam });
+         }
+         return;
+      }
 
-        let valid = false, remove = false, moveType = 'normal'; const myTeam = getTeam(turn);
-        
-        if (card.rank === 'J') {
-            if (isTwoEyedJack(card.rank, card.suit)) { 
-                // ATURAN MUTLAK: Jack Dua Mata TIDAK BISA MENIMPA chip apapun (locked atau tidak).
-                if(cell.chip === null) { 
-                    valid = true; 
-                    moveType = 'wild'; 
-                } else {
-                    setErrorCell({r,c}); 
-                    playEffect('error');
-                    setToast({sender:'SYS', text:'TIDAK BISA MENIMPA! Kotak sudah terisi.', type:'error'});
-                    return;
-                }
-            } 
-            else if (isOneEyedJack(card.rank, card.suit)) { 
-                // Remove card: Hanya bisa lawan, dan TIDAK BISA jika locked (TERKUNCI).
-                if(cell.chip !== null && getTeam(cell.chip) !== myTeam) {
-                    if (cell.locked) {
-                        setErrorCell({r,c}); 
-                        playEffect('error');
-                        setToast({sender:'SYS', text:'Chip TERKUNCI! Tidak bisa dihapus.', type:'error'});
-                        return; 
-                    }
-                    valid=true; remove=true; moveType = 'remove'; 
-                } else if (cell.chip !== null && getTeam(cell.chip) === myTeam) {
-                     setErrorCell({r,c});
-                     playEffect('error');
-                     setToast({sender:'SYS', text:'Jack Satu Mata hanya untuk hapus chip tim sendiri!', type:'error'});
-                     return;
-                } else if (cell.chip === null) {
-                    setErrorCell({r,c});
-                    playEffect('error');
-                    setToast({sender:'SYS', text:'Jack Satu Mata hanya untuk hapus chip lawan!', type:'error'});
-                    return;
-                }
-            }
-        } else if (cell.rank === card.rank && cell.suit === card.suit) { 
-            // Kartu Biasa: TIDAK BISA MENIMPA chip apapun
-            if (cell.chip === null) {
-                valid = true;
-            }
-            else if (cell.chip !== null) {
-                setErrorCell({r,c}); 
-                playEffect('error');
-                setToast({sender:'SYS', text:'Kotak ini sudah terisi.', type:'error'});
-                return; 
-            }
-        }
-        
-        if (valid) executeMove(r, c, remove, selectedCardIdx, moveType, card); 
-        else { 
-            setErrorCell({r,c}); 
-            setTimeout(() => setErrorCell(null), 500); 
-            playEffect('error'); 
-        }
-    }, [winner, appMode, turn, playerIndex, selectedCardIdx, hands, board, playEffect, executeMove]);
+      const nextTurn = (gameState.currentTurnIndex + 1) % gameState.players.length;
+      if (gameMode === 'offline') {
+          setGameState(prev => ({ ...prev, currentTurnIndex: nextTurn }));
+          setTimeLeft(300);
+          if (nextTurn === 1) setTimeout(runBotMove, 1000);
+      } else {
+          const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
+          await updateDoc(roomRef, { currentTurnIndex: nextTurn });
+      }
+      setNotification("Waktu Habis! Giliran Dilewati.");
+      setTimeout(()=>setNotification(''), 3000);
+  };
 
-    const handleSendChat = (text) => {
-        const msg = { senderName: playerName, text, senderIndex: appMode==='online-game' ? playerIndex : 0 };
-        if (appMode === 'online-game') {
-            updateDoc(getRoomRef(roomId), { chats: arrayUnion(msg) }).catch(console.error);
-        } else {
-            setChats(prev => [...prev, msg]);
-        }
-        setUnreadCount(0);
-    };
+  const triggerInterstitial = (callback) => {
+      setInterstitialStep(1);
+      setTimeout(() => {
+          setInterstitialStep(2);
+          setTimeout(() => {
+              setInterstitialStep(0);
+              if (callback) callback();
+          }, 3000);
+      }, 3000);
+  };
 
-    const cycleSoundMode = () => {
-        setSoundMode(prev => prev === 'sound' ? 'vibrate' : prev === 'vibrate' ? 'silent' : 'sound');
-    };
+  // --- LOGIC: RECYCLE DEAD CARD ---
+  const recycleDeadCard = async (cardIndex) => {
+    if (!gameState || gameState.winner) return;
+    const player = gameState.players[gameState.currentTurnIndex];
+    const isMyTurn = (gameMode === 'offline' && player.uid === 'me') || (gameMode === 'online' && player.uid === user.uid);
+    if (!isMyTurn) return; 
+
+    playSound('recycle');
+    // No Notification as requested
+    // setNotification("Mengganti Kartu Mati..."); 
+
+    const newDeck = [...gameState.deck];
+    const newHand = [...player.hand];
     
-    const handleQuit = () => {
-        if (showForfeitModal) return; 
-        if (winner !== null) { resetGameState(); setAppMode('menu'); } 
-        else if (appMode === 'offline-bot' || appMode === 'online-game') { setShowForfeitModal(true); } 
-        else { resetGameState(); setAppMode('menu'); }
-    };
-    
-    const confirmForfeitAndQuit = () => {
-        if(appMode === 'menu') return;
-        setShowForfeitModal(false); 
-        const opponentTeam = getTeam(playerIndex) === 0 ? 1 : 0;
-        
-        if (appMode === 'online-game') {
-            // Update Firestore untuk menetapkan pemenang (Security Rules harus mengizinkan)
-            updateDoc(getRoomRef(roomId), { winner: opponentTeam }).catch(e => {
-                 console.error("FORFEIT ERROR:", e);
-                 setToast({sender:'SYS', text:'Gagal gugur! Cek koneksi/Rules.', type:'error'});
-            });
-        }
-        
-        setWinner(opponentTeam); 
-        setShowGameOverModal(true); 
-        
-        setTimeout(() => {
-            resetGameState(); 
-            setAppMode('menu'); 
-        }, 1500); 
-    };
+    newHand.splice(cardIndex, 1);
+    if (newDeck.length > 0) newHand.push(newDeck.shift());
 
-    const handleReturnToMenu = () => {
-        resetGameState(); 
-        setAppMode('menu'); 
+    if (gameMode === 'offline') {
+        setGameState(prev => ({
+            ...prev,
+            deck: newDeck,
+            players: prev.players.map((p, i) => i === prev.currentTurnIndex ? { ...p, hand: newHand } : p)
+        }));
+    } else {
+        const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
+        const updatedPlayers = [...gameState.players];
+        updatedPlayers[gameState.currentTurnIndex].hand = newHand;
+        await updateDoc(roomRef, { deck: newDeck, players: updatedPlayers });
+    }
+  };
+
+  const handleCreateRoom = async (playersCount) => {
+    if (!user) return;
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const newBoard = generateBoard();
+    const newDeck = generateDeck();
+    const players = [{ 
+        uid: user.uid, 
+        name: playerName, 
+        avatar: playerAvatar,
+        avatarType: playerAvatarType,
+        team: 'blue', 
+        hand: newDeck.splice(0, 5), 
+        isHost: true 
+    }];
+    await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', code), {
+      roomId: code, hostId: user.uid, status: 'waiting', maxPlayers: playersCount,
+      board: JSON.stringify(newBoard), deck: newDeck, discardPile: [], players,
+      currentTurnIndex: 0, scores: { blue: 0, red: 0 }, winner: null, chat: [], winningLines: []
+    });
+    setRoomCode(code); setGameMode('online'); setMyTeam('blue'); setView('lobby');
+  };
+
+  const handleJoinRoom = async () => {
+    if (!user || roomCode.length !== 6) return;
+    const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
+    const snap = await getDoc(roomRef);
+    if (!snap.exists()) return setNotification("Room tidak ada");
+    const data = snap.data();
+    if (data.players.length >= data.maxPlayers) return setNotification("Penuh");
+    const team = data.maxPlayers === 2 ? 'red' : (data.players.length % 2 === 0 ? 'blue' : 'red');
+    const deck = [...data.deck];
+    const hand = deck.splice(0, 5);
+    const newPlayer = { 
+        uid: user.uid, 
+        name: playerName, 
+        avatar: playerAvatar,
+        avatarType: playerAvatarType,
+        team, 
+        hand, 
+        isHost: false 
     };
+    await updateDoc(roomRef, { players: arrayUnion(newPlayer), deck, status: data.players.length + 1 === data.maxPlayers ? 'playing' : 'waiting' });
+    setGameMode('online'); setMyTeam(team); setView('lobby');
+  };
 
-    const initGame = (mode, playerCount = 2) => {
-        setAppMode('dealing'); setIsDealing(true);
-        const d = createDeck(); 
-        const b = REAL_BOARD_PATTERN.map((rowStr, r) => rowStr.map((cardStr, c) => { const coord = `${r},${c}`; if (cardStr === 'XX') return { type: 'corner', r, c, id: coord }; return { type: 'card', rank: cardStr.slice(0, -1), suit: cardStr.slice(-1), r, c, chip: null, chipRank: null, chipSuit: null, locked: false, isWild: false, id: coord }; }));
-        setTimeout(() => {
-            setDeck(d); setBoard(b); 
-            const h = {0: d.splice(0, 5), 1: d.splice(0, 5)}; if(playerCount === 4) { h[2] = d.splice(0, 5); h[3] = d.splice(0, 5); } else { h[2] = []; h[3] = []; }
-            setHands(h); setTurn(0); setWinner(null); setChats([]); setAppMode(mode); setMaxPlayers(playerCount); setScores({0:0, 1:0}); setWinningLines([]); setScoredIds(new Set()); setTimeLeft(TURN_DURATION); setShowGameOverModal(false); setIsDealing(false);
-            setConsecutiveTimeouts(0);
-
-            if(mode === 'offline-bot') { 
-                const botName = `Robot (${botLevel === 'easy' ? 'Mudah' : botLevel === 'medium' ? 'Sedang' : 'Sulit'})`;
-                setPlayerNamesList({0: playerName, 1: botName}); 
-                setPlayerAvatarsList({0: playerAvatar, 1: ALL_AVATARS.find(a => a.label === 'Robot Mengedip').icon}); // Ganti dengan ikon Bot
-                setChats([{senderName: "Bot", text: botMessages[botLevel].quote}]); 
-            }
-        }, 3000);
-    };
-
-    const createRoom = async (pCount) => {
-        if (!isOnlineAvailable || !db) { 
-            setLoadingText("Gagal: Konfigurasi Firebase tidak valid.");
-            setTimeout(() => { setLoadingText(""); setAppMode('online-setup'); }, 5000);
-            return;
-        }
-        if (!user) {
-             setLoadingText("Gagal: Autentikasi belum siap. Coba lagi.");
-             setTimeout(() => { setLoadingText(""); setAppMode('online-setup'); }, 3000);
-             return;
-        }
-        setLoadingText("Membuat Room...");
-        const newRoomId = generateNumericId();
+  const handleLeaveLobby = async () => {
+    if (gameMode === 'online' && roomCode && user) {
         try {
-            const initialBoard = REAL_BOARD_PATTERN.map((rowStr, r) => rowStr.map((cardStr, c) => { 
-                const coord = `${r},${c}`; 
-                if (cardStr === 'XX') return { type: 'corner', r, c, id: coord }; 
-                return { type: 'card', rank: cardStr.slice(0, -1), suit: cardStr.slice(-1), r, c, chip: null, chipRank: null, chipSuit: null, locked: false, isWild: false, id: coord }; 
-            }));
-            const roomRef = getRoomRef(newRoomId);
-            await setDoc(roomRef, {
-                hostId: user.uid, players: [user.uid], maxPlayers: pCount, 
-                playerNames: {[0]: playerName}, playerAvatars: {[0]: playerAvatar}, // Simpan Avatar Emoji
-                status: 'waiting', turn: 0, winner: null, board: JSON.stringify(initialBoard), hands: JSON.stringify({}), deck: JSON.stringify([]),
-                chats: [{senderName: "SYSTEM", text: "Room dibuat", senderIndex: -1}], createdAt: Date.now(),
-                lastPlayedCard: null, lastMove: null, scores: {0:0, 1:0}, winningLines: JSON.stringify([]), scoredIds: JSON.stringify([]),
-                consecutiveTimeouts: 0,
-            });
-            setRoomId(newRoomId); setPlayerIndex(0); setMaxPlayers(pCount); setAppMode('online-share'); setLoadingText("");
-        } catch (e) { 
-            console.error("Error creating room:", e);
-            const errorMsg = e.message && e.message.includes("permission") 
-                ? "Kesalahan Izin: Pastikan Anda sudah mengklik tombol 'PUBLISH' di tab Rules Firebase Anda."
-                : `Gagal membuat room: ${e.message || "Unknown Error"}`;
-            setLoadingText(errorMsg);
-            setTimeout(() => { setLoadingText(""); setAppMode('online-setup'); }, 8000);
-        }
-    };
-
-    const joinRoom = async () => {
-        if (!isOnlineAvailable || !db) {
-            setLoadingText("Gagal: Konfigurasi Firebase tidak valid.");
-            setTimeout(() => { setLoadingText(""); setAppMode('online-setup'); }, 5000);
-            return;
-        }
-        if (!user) {
-             setLoadingText("Gagal: Autentikasi belum siap. Coba lagi.");
-             setTimeout(() => { setLoadingText(""); setAppMode('online-setup'); }, 3000);
-             return;
-        }
-
-        if (!joinCodeInput) { setToast({sender:'SYS', text:'Masukkan kode room!', type:'error'}); return; }
-        setLoadingText("Bergabung...");
-        try {
-            const roomRef = getRoomRef(joinCodeInput);
+            const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
             const snap = await getDoc(roomRef);
             if (snap.exists()) {
                 const data = snap.data();
-                
-                if (data.players.length >= data.maxPlayers && !data.players.includes(user.uid)) {
-                    setToast({sender:'SYS', text:'Room Penuh!', type:'error'});
-                    setLoadingText("");
-                    return;
-                }
-                
-                let myIdx = data.players.indexOf(user.uid);
-                if (myIdx === -1) { 
-                    myIdx = data.players.length; 
-                    await updateDoc(roomRef, { 
-                        players: arrayUnion(user.uid), 
-                        [`playerNames.${myIdx}`]: playerName,
-                        [`playerAvatars.${myIdx}`]: playerAvatar, // Simpan Avatar Emoji
-                    }); 
-                    await updateDoc(roomRef, { chats: arrayUnion({ senderName: "WASIT", text: `${playerName} bergabung.`, senderIndex: -1 }) });
-                }
-                setRoomId(joinCodeInput); setPlayerIndex(myIdx); setMaxPlayers(data.maxPlayers);
-                const currentPlayers = data.players.length + (myIdx === data.players.length ? 1 : 0);
-
-                if (currentPlayers === data.maxPlayers && data.status === 'waiting') { 
-                    if(myIdx === 0) { 
-                        const d = createDeck();
-                        const h = {0: d.splice(0, 5), 1: d.splice(0, 5)}; 
-                        if(data.maxPlayers === 4) { h[2] = d.splice(0, 5); h[3] = d.splice(0, 5); }
-                        await updateDoc(roomRef, { status: 'started', hands: JSON.stringify(h), deck: JSON.stringify(d), chats: arrayUnion({ senderName: "WASIT", text: "Game dimulai!", senderIndex: -1 }) });
-                        setAppMode('online-game');
-                    } else { setAppMode('online-game'); }
-                }
-                else if (data.status === 'started') { setAppMode('online-game'); } else { setAppMode('online-share'); }
-            } else {
-                setToast({sender:'SYS', text:'Room tidak ditemukan!', type:'error'});
+                const updatedPlayers = data.players.filter(p => p.uid !== user.uid);
+                await updateDoc(roomRef, { players: updatedPlayers });
             }
-        } catch (e) { 
-            console.error("Error joining room:", e); 
-            setToast({sender:'SYS', text:`Gagal bergabung: ${e.message}`, type:'error'});
+        } catch (error) {
+            console.error("Error leaving room:", error);
         }
-        setLoadingText("");
-    };
+    }
+    setGameState(null);
+    setRoomCode('');
+    setView('menu');
+    setNotification('');
+  };
 
-    const copyCode = () => {
-        navigator.clipboard.writeText(roomId).then(() => setToast({sender:'SYS', text:'Kode disalin!', type:'ok'}));
-        setTimeout(()=>setToast(null), 1500);
-    };
-
-    // --- RENDER HELPERS ---
-    const winningChipSet = useMemo(() => {
-        const set = new Set();
-        winningLines.forEach(lineObj => {
-            lineObj.line.forEach(p => set.add(`${p.r},${p.c}`));
-        });
-        return set;
-    }, [winningLines]);
+  const handleOfflineStart = (difficulty = 'easy') => {
+    const newBoard = generateBoard();
+    const newDeck = generateDeck();
     
-    const ForfeitConfirmationModal = ({ onConfirm, onCancel }) => (
-        <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"> 
-             <div className="bg-zinc-900 border border-rose-500/50 p-6 rounded-2xl text-center max-w-xs shadow-[0_0_30px_rgba(244,63,94,0.3)]"> 
-                 <AlertOctagon size={40} className="text-rose-500 mx-auto mb-4"/>
-                 <h3 className="text-lg font-black text-white mb-2">GUGUR SEKARANG?</h3>
-                 <p className="text-sm text-zinc-400 mb-6">Anda akan dianggap **KALAH** dan lawan akan dinyatakan sebagai pemenang.</p>
-                 <div className="flex gap-4 justify-center">
-                     <button onClick={onCancel} className="flex-1 py-3 bg-zinc-700 hover:bg-zinc-600 rounded-lg font-bold text-white transition-colors">BATAL</button>
-                     <button onClick={onConfirm} className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 rounded-lg font-bold text-white transition-colors flex items-center justify-center gap-1"><LogOut size={16}/> YA, GUGUR</button>
+    setGameState({
+      board: newBoard, deck: newDeck, discardPile: [],
+      players: [
+        { 
+            uid: 'me', 
+            name: playerName, 
+            avatar: playerAvatar,
+            avatarType: playerAvatarType,
+            team: 'blue', 
+            hand: newDeck.splice(0, 5), 
+            isBot: false 
+        },
+        { 
+            uid: 'bot', 
+            name: `Robot (${difficulty})`, 
+            avatar: '🤖',
+            avatarType: 'emoji',
+            team: 'red', 
+            hand: newDeck.splice(0, 5), 
+            isBot: true,
+            difficulty 
+        }
+      ],
+      currentTurnIndex: 0, scores: { blue: 0, red: 0 }, winner: null, chat: [], winningLines: []
+    });
+    setMyTeam('blue'); 
+    setGameMode('offline'); 
+    setTimeLeft(300);
+    setShowBotLevels(false);
+
+    triggerInterstitial(() => {
+        setView('game');
+    });
+  };
+
+  const handleForfeit = async () => {
+      if (gameMode === 'offline') {
+          setGameState(prev => ({ ...prev, winner: 'red' }));
+          playSound('win');
+      } else {
+          const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
+          const opponentTeam = myTeam === 'blue' ? 'red' : 'blue';
+          await updateDoc(roomRef, { winner: opponentTeam });
+          playSound('win');
+      }
+      setShowExitConfirm(false);
+  };
+
+  const playCard = async (cardIndex, r, c) => {
+    if (!gameState || gameState.winner || gameOverReason) return;
+    const player = gameState.players[gameState.currentTurnIndex];
+    const isMyTurn = (gameMode === 'offline' && player.uid === 'me') || (gameMode === 'online' && player.uid === user.uid);
+    if (!isMyTurn) return;
+
+    const validMoves = getValidMoves(player.hand[cardIndex], gameState.board, player.team);
+    const isMoveValid = validMoves.some(m => m.r === r && m.c === c);
+
+    if (!isMoveValid) { 
+        if (hintsEnabled) {
+            setNotification("Langkah Tidak Valid!"); 
+            vibrate(); 
+            playSound('error');
+            setTimeout(() => setNotification(''), 1000); 
+        }
+        return; 
+    }
+
+    const newBoard = JSON.parse(JSON.stringify(gameState.board));
+    const card = player.hand[cardIndex];
+    
+    // LOGIC: Set 'playedWithWild' if the card used is a WILD card (Jack 2 eyes)
+    if (card.type === 'remove') {
+        playSound('remove');
+        newBoard[r][c].isRemoving = true;
+    } else if (card.type === 'wild') {
+        playSound('wild');
+        newBoard[r][c].chip = player.team;
+        newBoard[r][c].playedWithWild = true; // MARKER FOR J2 CHIP
+    } else {
+        playSound('place');
+        newBoard[r][c].chip = player.team;
+    }
+
+    if (card.type === 'remove') {
+        newBoard[r][c].chip = null;
+        newBoard[r][c].isRemoving = false; 
+        newBoard[r][c].playedWithWild = false; // Reset wild status if removed
+    }
+
+    const { count: sequencesFound, lines: newLines } = checkForSequences(newBoard, player.team);
+    const newScore = (gameState.scores[player.team] || 0) + sequencesFound;
+    let winner = null;
+    if (newScore >= 2) winner = player.team;
+
+    if (winner) playSound('win');
+
+    const updatedWinningLines = [...(gameState.winningLines || []), ...newLines];
+    const newDeck = [...gameState.deck];
+    const newHand = [...player.hand];
+    newHand.splice(cardIndex, 1);
+    if (newDeck.length > 0) newHand.push(newDeck.shift());
+
+    const nextTurn = (gameState.currentTurnIndex + 1) % gameState.players.length;
+    const scores = { ...gameState.scores, [player.team]: newScore };
+
+    vibrate(); 
+    setHighlightedCells([]);
+    setConsecutiveMissedTurns(0); 
+
+    if (gameMode === 'offline') {
+      setGameState(prev => ({
+        ...prev, board: newBoard, deck: newDeck, players: prev.players.map((p, i) => i === prev.currentTurnIndex ? { ...p, hand: newHand } : p),
+        scores, winner, currentTurnIndex: nextTurn, winningLines: updatedWinningLines
+      }));
+      if (!winner) setTimeout(runBotMove, 1500);
+    } else {
+      const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
+      const updatedPlayers = [...gameState.players];
+      updatedPlayers[gameState.currentTurnIndex].hand = newHand;
+      await updateDoc(roomRef, { board: JSON.stringify(newBoard), deck: newDeck, players: updatedPlayers, scores, winner, currentTurnIndex: nextTurn, winningLines: updatedWinningLines });
+    }
+  };
+
+  const runBotMove = () => {
+    setGameState(prev => {
+      if (!prev || prev.winner) return prev;
+      const bot = prev.players[1];
+      const newBoard = JSON.parse(JSON.stringify(prev.board));
+      let move = null; let cardIdx = -1;
+      
+      const validMovesList = [];
+      for (let i = 0; i < bot.hand.length; i++) {
+         const valid = getValidMoves(bot.hand[i], newBoard, 'red');
+         valid.forEach(v => validMovesList.push({move: v, cardIdx: i}));
+      }
+
+      if (validMovesList.length > 0) {
+          const randomIndex = Math.floor(Math.random() * validMovesList.length);
+          const selected = validMovesList[randomIndex];
+          move = selected.move;
+          cardIdx = selected.cardIdx;
+      }
+      
+      let newScore = prev.scores.red; let winner = null; let newWinningLines = prev.winningLines || [];
+      if (move) {
+         if (bot.hand[cardIdx].type === 'remove') {
+             playSound('remove');
+             newBoard[move.r][move.c].chip = null;
+             newBoard[move.r][move.c].playedWithWild = false;
+         } else {
+             if(bot.hand[cardIdx].type === 'wild') {
+                 playSound('wild');
+                 newBoard[move.r][move.c].playedWithWild = true;
+             } else {
+                 playSound('place');
+             }
+             newBoard[move.r][move.c].chip = 'red';
+         }
+         const { count, lines } = checkForSequences(newBoard, 'red');
+         newScore += count; newWinningLines = [...newWinningLines, ...lines];
+         if (newScore >= 2) winner = 'red';
+      }
+      
+      const newDeck = [...prev.deck]; const newHand = [...bot.hand];
+      if (cardIdx !== -1) newHand.splice(cardIdx, 1); if (newDeck.length > 0) newHand.push(newDeck.shift());
+      return { ...prev, board: newBoard, deck: newDeck, players: prev.players.map(p => p.uid === 'bot' ? {...p, hand: newHand} : p), scores: {...prev.scores, red: newScore}, winner, currentTurnIndex: 0, winningLines: newWinningLines };
+    });
+    setTimeLeft(300);
+  };
+
+  const sendChat = async () => {
+    if (!chatMessage.trim()) return;
+    const msg = { sender: playerName, team: myTeam, text: chatMessage, timestamp: Date.now() };
+    if (gameMode === 'offline') setGameState(p => ({...p, chat: [...p.chat, msg]}));
+    else await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { chat: arrayUnion(msg) });
+    setChatMessage('');
+  };
+
+  const playSound = (type) => { if (soundEnabled) playSynthSound(type); };
+  const vibrate = () => { if (vibrationEnabled && navigator.vibrate) navigator.vibrate(200); };
+  const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+  
+  // --- VIEWS ---
+
+  if (interstitialStep > 0) return (
+      <div className="fixed inset-0 bg-slate-900 z-[100] flex items-center justify-center p-6 flex-col text-center">
+          {interstitialStep === 1 && (
+              <div className="animate-fade-in-down">
+                   <div className="text-6xl mb-6">🍗</div>
+                   <h1 className="text-3xl md:text-5xl font-black text-yellow-400 tracking-tight leading-tight">
+                       Sudah Coba <br/><span className="text-white">Ayam Bakar Bibir ?</span>
+                   </h1>
+                   <div className="mt-8 animate-bounce">
+                       <div className="w-16 h-1 bg-white/20 rounded-full mx-auto overflow-hidden">
+                           <div className="w-1/2 h-full bg-yellow-400 animate-[loading_1s_ease-in-out_infinite]"></div>
+                       </div>
+                   </div>
+              </div>
+          )}
+          {interstitialStep === 2 && (
+              <div className="animate-scale-in">
+                   <h1 className="text-4xl md:text-6xl font-black text-white tracking-widest drop-shadow-[0_0_25px_rgba(255,255,255,0.5)]">
+                       AYO MULAI<br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">PERMAINAN !</span>
+                   </h1>
+              </div>
+          )}
+      </div>
+  );
+
+  if (view === 'menu') return (
+    // PREMIUM MENU STYLE: Black/Gold Gradient
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-neutral-900 to-slate-900 flex flex-col items-center justify-center p-4 font-sans overflow-y-auto relative">
+        <style>{`
+          @keyframes float {
+            0%, 100% { transform: translateY(0) rotate(0); }
+            50% { transform: translateY(-10px) rotate(2deg); }
+          }
+          @keyframes float-slow {
+             0%, 100% { transform: translateY(0) rotate(-5deg) scale(1.5); }
+             50% { transform: translateY(-20px) rotate(5deg) scale(1.6); }
+          }
+          .animate-float { animation: float 3s ease-in-out infinite; }
+          .animate-float-slow { animation: float-slow 8s ease-in-out infinite; }
+        `}</style>
+
+        {/* BACKGROUND DECORATION (Transparent Cards) */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none flex items-center justify-center opacity-20">
+             <CardFan3D large={true} />
+        </div>
+
+        {/* AVATAR & NAME EDIT MODAL */}
+        {showAvatarModal && (
+            <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                <div className="bg-slate-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-scale-in border border-slate-700 max-h-[90vh] overflow-y-auto">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="font-bold text-lg text-white flex items-center gap-2"><User size={20}/> Edit Profil</h3>
+                        <button onClick={()=>setShowAvatarModal(false)} className="p-2 bg-slate-700 rounded-full hover:bg-slate-600 text-white"><X size={20}/></button>
+                    </div>
+
+                    <div className="mb-6 bg-slate-900 p-4 rounded-2xl border border-slate-700">
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Nama Pemain</label>
+                        <div className="flex gap-2">
+                            <input 
+                                value={playerName} 
+                                onChange={e=>{
+                                    if(e.target.value.length <= 20) setPlayerName(e.target.value);
+                                }}
+                                className="flex-1 bg-slate-800 border border-slate-600 rounded-xl px-3 py-2 font-bold text-white outline-none focus:border-yellow-500 transition-colors"
+                                placeholder="Maks 20 Huruf"
+                            />
+                            {/* TOMBOL SIMPAN BARU: File Icon Kuning + Teks Kecil */}
+                            <button onClick={()=>setShowAvatarModal(false)} className="bg-slate-700 border border-slate-600 text-yellow-500 px-4 py-2 rounded-xl flex flex-col items-center justify-center gap-0.5 hover:bg-slate-600 transition-colors group">
+                                <FileText size={18} className="group-hover:scale-110 transition-transform"/> 
+                                <span className="text-[8px] font-black uppercase tracking-wider leading-none">save</span>
+                            </button>
+                        </div>
+                        <div className="text-right text-[10px] text-slate-500 mt-1">{playerName.length}/20</div>
+                    </div>
+
+                    <div className="grid grid-cols-5 gap-3 max-h-60 overflow-y-auto p-1">
+                        {FAMILY_AVATARS.map((avatar, idx) => (
+                            <button 
+                                key={idx}
+                                onClick={() => {
+                                    setPlayerAvatar(avatar.emoji);
+                                    setPlayerAvatarType('emoji');
+                                }}
+                                className={`aspect-square flex flex-col items-center justify-center bg-slate-700 hover:bg-slate-600 rounded-xl transition-all border-2 ${playerAvatar === avatar.emoji ? 'border-yellow-500 bg-slate-600 shadow-sm' : 'border-transparent'}`}
+                            >
+                                <span className="text-2xl mb-1">{avatar.emoji}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        )}
+
+        <div className="relative w-full max-w-md bg-slate-800/60 backdrop-blur-xl p-8 rounded-[40px] shadow-2xl border border-slate-700/50 flex flex-col items-center gap-6 mt-10 z-10">
+            {/* AMAN FIREBASE BADGE (UPDATED) */}
+            <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-green-900/40 px-3 py-1.5 rounded-full border border-green-500/50 shadow-sm">
+                <ShieldCheck size={16} className="text-green-400"/>
+                <span className="text-[10px] font-black text-green-400 tracking-wide">AMAN FIREBASE</span>
+            </div>
+
+            {/* 3D MOVING CARDS */}
+            <div className="mb-2 w-full flex justify-center pt-6 pb-2">
+                <CardFan3D />
+            </div>
+
+            {/* TITLE */}
+            <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-yellow-600 drop-shadow-sm tracking-tight -mt-4 mb-2">SEQUENCE</h1>
+
+            {/* PLAYER PROFILE */}
+            <div className="w-full bg-slate-900/50 p-2 rounded-2xl flex items-center gap-3 border border-slate-700 shadow-sm relative group cursor-pointer hover:bg-slate-900/80 transition-colors" onClick={() => setShowAvatarModal(true)}>
+                 <div className="w-14 h-14 rounded-xl bg-slate-800 flex items-center justify-center overflow-hidden border-2 border-yellow-500/50 shadow-md shrink-0">
+                     <span className="text-3xl">{playerAvatar}</span>
                  </div>
+                 <div className="flex-1">
+                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5 ml-1">Nama Pemain</label>
+                     <div className="flex items-center gap-2">
+                         <span className="font-bold text-white text-lg truncate max-w-[150px]">{playerName}</span>
+                         <Edit size={14} className="text-slate-500"/>
+                     </div>
+                 </div>
+            </div>
+
+            {/* GAME MODES */}
+            <div className="w-full space-y-3">
+                {/* VS ROBOT TOGGLE (UPDATED LIGHT THEME BUTTON) */}
+                {!showBotLevels ? (
+                    <button onClick={()=>setShowBotLevels(true)} className="w-full bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-400 hover:to-yellow-300 text-slate-900 p-4 rounded-2xl font-black flex items-center justify-center gap-3 shadow-lg shadow-yellow-500/20 transition-all hover:scale-[1.02] active:scale-95 group border-2 border-yellow-300">
+                        <Bot className="group-hover:rotate-12 transition-transform text-slate-900"/> VS ROBOT
+                    </button>
+                ) : (
+                    <div className="bg-slate-900 p-2 rounded-2xl border border-slate-700 animate-fade-in-down">
+                         <div className="flex justify-between items-center px-2 mb-2">
+                             <span className="text-xs font-bold text-slate-400 flex items-center gap-1"><Brain size={12}/> PILIH LEVEL</span>
+                             <button onClick={()=>setShowBotLevels(false)}><X size={14} className="text-slate-400"/></button>
+                         </div>
+                         <div className="grid grid-cols-3 gap-2">
+                             <button onClick={()=>handleOfflineStart('easy')} className="bg-slate-800 hover:bg-green-900/30 text-green-400 py-3 rounded-xl font-bold text-xs shadow-sm border border-slate-700 hover:border-green-500/50 flex flex-col items-center gap-1 transition-all">
+                                 <Smile size={18}/> MUDAH
+                             </button>
+                             <button onClick={()=>handleOfflineStart('medium')} className="bg-slate-800 hover:bg-yellow-900/30 text-yellow-400 py-3 rounded-xl font-bold text-xs shadow-sm border border-slate-700 hover:border-yellow-500/50 flex flex-col items-center gap-1 transition-all">
+                                 <Zap size={18}/> SEDANG
+                             </button>
+                             <button onClick={()=>handleOfflineStart('hard')} className="bg-slate-800 hover:bg-red-900/30 text-red-400 py-3 rounded-xl font-bold text-xs shadow-sm border border-slate-700 hover:border-red-500/50 flex flex-col items-center gap-1 transition-all">
+                                 <Skull size={18}/> SUSAH
+                             </button>
+                         </div>
+                    </div>
+                )}
+
+                <div className="flex gap-3">
+                    {/* ELEGANT LIGHT THEME BUTTONS */}
+                    <button onClick={()=>handleCreateRoom(2)} className="flex-1 bg-gradient-to-br from-slate-100 to-slate-300 hover:from-white hover:to-slate-200 text-slate-900 p-4 rounded-2xl font-bold text-sm shadow-lg border border-white/50 flex items-center justify-center gap-2 group transition-all transform hover:-translate-y-0.5">
+                        <Swords size={18} className="text-black group-hover:scale-110 transition-transform"/> 1 VS 1
+                    </button>
+                    <button onClick={()=>handleCreateRoom(4)} className="flex-1 bg-gradient-to-br from-slate-100 to-slate-300 hover:from-white hover:to-slate-200 text-slate-900 p-4 rounded-2xl font-bold text-sm shadow-lg border border-white/50 flex items-center justify-center gap-2 group transition-all transform hover:-translate-y-0.5">
+                        <Swords size={18} className="text-black group-hover:scale-110 transition-transform"/> 2 VS 2
+                    </button>
+                </div>
+            </div>
+
+            {/* JOIN CODE (ELEGANT LIGHT STYLE) */}
+            <div className="w-full relative">
+                <input 
+                    value={roomCode} 
+                    onChange={e=>setRoomCode(e.target.value)} 
+                    className="w-full bg-white p-4 rounded-2xl text-center text-slate-900 font-mono tracking-[0.2em] outline-none shadow-inner border-2 border-yellow-500/30 text-lg placeholder-slate-400 focus:border-yellow-500 transition-colors" 
+                    placeholder="KODE ROOM"
+                />
+                <button onClick={handleJoinRoom} className="absolute right-2 top-2 bottom-2 aspect-square bg-green-600 hover:bg-green-500 rounded-xl flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105 active:scale-95"><Play fill="white" size={24}/></button>
+            </div>
+
+            {/* PEMISAH GARIS WARNA BAGUS */}
+            <div className="w-full h-1 bg-gradient-to-r from-transparent via-yellow-500 to-transparent mt-4 mb-2 opacity-50"></div>
+
+            {/* FOOTER TEXT */}
+            <div className="text-center opacity-50">
+                <p className="text-[10px] font-medium text-slate-400 leading-relaxed">
+                    powered by SETIAWAN <br/>
+                    <span className="text-yellow-500 font-bold">Jangan Lupa Mampir dan Makan di Ayam Bakar Spesial Bibir by WKA</span>
+                </p>
+            </div>
+        </div>
+    </div>
+  );
+  
+  // !!! PERBAIKAN URUTAN RENDER DI SINI !!!
+  // Pengecekan data kosong HARUS dilakukan SEBELUM mencoba merender Lobby atau Game
+  if (!gameState && !gameOverReason) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-500 font-bold animate-pulse">Memuat Permainan...</div>;
+
+  if (view === 'lobby') {
+      // LOGIC: Check if room is full
+      // Safe check: pastikan gameState ada sebelum akses players
+      const isRoomFull = gameState && gameState.players && gameState.players.length === gameState.maxPlayers;
+
+      return (
+         <div className="min-h-screen bg-gradient-to-br from-slate-900 to-indigo-900 flex items-center justify-center p-4">
+             <div className="bg-slate-800/90 backdrop-blur p-8 rounded-[40px] text-center w-full max-w-sm border border-slate-700 shadow-2xl relative">
+                 <button 
+                    onClick={handleLeaveLobby} 
+                    className="absolute top-6 left-6 w-10 h-10 bg-slate-700 rounded-full hover:bg-rose-500/20 text-slate-400 hover:text-rose-500 transition-colors flex items-center justify-center shadow-sm active:scale-95 group"
+                 >
+                    <X size={24} strokeWidth={2.5} />
+                 </button>
+
+                 <h2 className="text-2xl font-black text-white mb-6 mt-8 tracking-tight">RUANG TUNGGU</h2>
+                 <div className="bg-slate-900 p-6 rounded-3xl mb-6 cursor-pointer relative group border-2 border-slate-800 hover:border-indigo-500 transition-colors" onClick={()=>{navigator.clipboard.writeText(roomCode);setNotification("Disalin")}}>
+                    <div className="text-xs text-slate-400 font-bold mb-2 uppercase tracking-wider flex items-center justify-center gap-2"><Wifi size={12}/> KODE ROOM</div>
+                    <div className="text-4xl font-mono text-yellow-400 tracking-widest font-black drop-shadow-md">{roomCode}</div>
+                    <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity font-bold">KLIK SALIN</div>
+                 </div>
+                 
+                 {/* PLAYER LIST */}
+                 <div className="space-y-3 mb-8 text-left max-h-60 overflow-y-auto pr-1">
+                     {gameState?.players?.map((p,i)=>(
+                        <div key={i} className={`p-3 rounded-2xl flex items-center gap-3 shadow-sm border transition-all duration-300 ${i === (gameState.players.length-1) ? 'animate-fade-in-up bg-slate-700 border-green-500/50' : 'bg-slate-700 border-slate-600'}`}>
+                            <div className="w-10 h-10 rounded-xl bg-slate-600 flex items-center justify-center text-xl border border-slate-500 relative">
+                                {p.avatarType === 'image' ? <img src={p.avatar} className="w-full h-full object-cover rounded-xl"/> : p.avatar}
+                                {i === (gameState.players.length-1) && gameState.players.length > 1 && <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-ping"></div>}
+                            </div>
+                            <div className="flex-1">
+                                 <div className="font-bold text-white text-sm">{p.name}</div>
+                                 <div className={`text-[10px] font-black uppercase tracking-wider ${p.team==='blue'?'text-indigo-400':'text-rose-400'}`}>{p.team === 'blue' ? 'Tim Biru' : 'Tim Merah'}</div>
+                            </div>
+                            {p.isHost && <Crown size={16} className="text-yellow-500 drop-shadow-sm"/>}
+                        </div>
+                     ))}
+                 </div>
+
+                 {/* WAITING SIGNAL LOGIC */}
+                 {gameState?.status==='playing' ? (
+                     <div className="animate-pulse text-indigo-400 font-bold flex items-center justify-center gap-2"><Loader className="animate-spin"/> Game Sedang Berlangsung...</div>
+                 ) : (
+                     isRoomFull ? (
+                         // SIGNAL: ROOM FULL -> SHOW START BUTTON
+                        <div className="space-y-3 animate-fade-in">
+                             <div className="text-green-400 font-black text-lg tracking-widest animate-pulse">SIAP DIMULAI!</div>
+                             {user?.uid === gameState.players[0].uid ? (
+                                 <button onClick={async()=>{
+                                     if (gameMode==='online') {
+                                         const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
+                                         await updateDoc(roomRef, { status: 'playing' });
+                                     }
+                                 }} className="w-full bg-green-600 hover:bg-green-500 text-white p-4 rounded-2xl font-bold shadow-lg shadow-green-900/20 transition-all active:scale-95 flex items-center justify-center gap-2">
+                                     <Play fill="white" size={18}/> MULAI GAME
+                                 </button>
+                             ) : (
+                                 <div className="text-slate-400 text-xs italic">Menunggu Host Memulai...</div>
+                             )}
+                        </div>
+                     ) : (
+                         // SIGNAL: WAITING FOR OPPONENT
+                         <div className="flex flex-col items-center justify-center gap-2 opacity-80 py-4 bg-slate-900/50 rounded-2xl border border-slate-700/50 border-dashed">
+                             <div className="flex gap-1">
+                                 <div className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce" style={{animationDelay:'0s'}}></div>
+                                 <div className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce" style={{animationDelay:'0.2s'}}></div>
+                                 <div className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce" style={{animationDelay:'0.4s'}}></div>
+                             </div>
+                             <span className="text-yellow-500 font-bold text-xs tracking-widest uppercase">Menunggu Lawan ({gameState?.players?.length}/{gameState?.maxPlayers})</span>
+                             <span className="text-[10px] text-slate-500 max-w-[200px] leading-tight">Bagikan kode room ke teman untuk bermain</span>
+                         </div>
+                     )
+                 )}
+             </div>
+         </div>
+      );
+  }
+
+  // Jika kita sampai di sini, view bukan menu dan bukan lobby, tapi gameState harus ada.
+  // Pengecekan di atas sudah menangani null gameState.
+  
+  const currentPlayer = gameState ? gameState.players[gameState.currentTurnIndex] : null;
+  const isMyTurn = gameState && ((gameMode === 'offline' && currentPlayer.uid === 'me') || (gameMode === 'online' && currentPlayer.uid === user.uid));
+  const myPlayer = gameState ? gameState.players.find(p => p.uid === (gameMode === 'offline' ? 'me' : user.uid)) : null;
+  const myHand = myPlayer ? myPlayer.hand : [];
+
+  return (
+    <div className="fixed inset-0 bg-gradient-to-b from-indigo-50 to-white flex flex-col font-sans overflow-hidden">
+        {/* CONNECTION STATUS */}
+        {!isOnline && (
+            <div className="absolute top-0 left-0 w-full bg-red-500 text-white text-xs font-bold text-center p-1 z-[100] flex items-center justify-center gap-2 shadow-md">
+                <WifiOff size={12}/> Koneksi Terputus. Mencoba menghubungkan...
+            </div>
+        )}
+
+        {/* TOP BAR */}
+        <div className="h-14 md:h-16 bg-white/80 backdrop-blur-md border-b border-indigo-100 flex items-center justify-between px-2 md:px-4 z-30 shrink-0 shadow-sm">
+             <div className="flex items-center gap-2">
+                 <button onClick={()=>setShowExitConfirm(true)} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-xl bg-red-600 text-white hover:bg-red-700 transition-colors shadow-sm active:scale-95">
+                     <LogOut size={16} className="transform rotate-180 md:w-5 md:h-5"/>
+                 </button>
+                 <button onClick={()=>setShowSettings(true)} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors shadow-sm active:scale-95">
+                     <Settings size={16} className="md:w-5 md:h-5"/>
+                 </button>
+                 <button onClick={()=>setShowHelp(true)} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-xl bg-yellow-100 text-yellow-600 hover:bg-yellow-200 transition-colors shadow-sm active:scale-95">
+                     <Info size={16} strokeWidth={2.5} className="md:w-5 md:h-5"/>
+                 </button>
+             </div>
+             
+             <div className="flex items-center gap-2 md:gap-6">
+                 <div className="bg-slate-900 rounded-lg px-2 py-0.5 md:px-3 md:py-1 text-yellow-400 font-mono text-sm md:text-xl font-bold tracking-widest shadow-inner border border-slate-700">
+                     {formatTime(timeLeft)}
+                 </div>
+
+                 <div className="flex items-center bg-white px-3 py-1 md:px-4 md:py-1.5 rounded-full border border-slate-200 shadow-sm gap-2 md:gap-4">
+                     <div className="text-center"><div className="text-[7px] md:text-[9px] text-indigo-500 font-black tracking-wider">BIRU</div><div className="text-lg md:text-xl font-black text-indigo-600 leading-none">{gameState?.scores.blue}</div></div>
+                     <div className="w-px h-6 md:h-8 bg-slate-200"></div>
+                     <div className="text-center"><div className="text-[7px] md:text-[9px] text-rose-500 font-black tracking-wider">MERAH</div><div className="text-lg md:text-xl font-black text-rose-600 leading-none">{gameState?.scores.red}</div></div>
+                 </div>
+                 
+                 {currentPlayer && (
+                    <div className={`hidden md:flex items-center gap-2 px-3 py-1 rounded-xl border min-w-[180px] max-w-[220px] transition-all duration-300 ${currentPlayer.team==='blue'?'bg-indigo-50 border-indigo-100 ring-2 ring-indigo-200':'bg-rose-50 border-rose-100 ring-2 ring-rose-200'} ${isMyTurn ? 'scale-105 shadow-md' : 'opacity-80'}`}>
+                        <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center overflow-hidden border border-black/10 shrink-0">
+                            {currentPlayer.avatarType === 'image' ? <img src={currentPlayer.avatar} className="w-full h-full object-cover"/> : currentPlayer.avatar}
+                        </div>
+                        <div className={`font-bold text-sm truncate flex-1 ${currentPlayer.team==='blue'?'text-indigo-600':'text-rose-600'}`}>
+                            {currentPlayer.name}
+                        </div>
+                        {/* Active Player Indicator */}
+                        <div className={`w-2 h-2 rounded-full ${isMyTurn ? 'animate-ping bg-green-500' : 'bg-slate-300'}`}></div>
+                    </div>
+                 )}
              </div>
         </div>
-    );
 
-    if (appMode === 'dealing') return <div className="min-h-screen bg-[#050505] flex items-center justify-center relative overflow-hidden"><DealingOverlay onComplete={()=>{resetGameState(); setAppMode('menu'); setIsDealing(false);}}/></div>;
-
-    const myAvatar = playerAvatar || ALL_AVATARS[0].icon;
-
-    if (appMode === 'menu') {
-        return (
-            <div className="min-h-screen bg-felt-pattern flex items-center justify-center p-4 font-sans relative overflow-hidden">
+        {/* BOARD AREA */}
+        <div className="flex-1 flex items-center justify-center overflow-hidden p-1 md:p-4 relative bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-fixed">
+             {gameState ? (
+             <div className="relative transform-style-3d rotate-x-12 max-w-[800px] w-full aspect-square transition-transform duration-500">
+                 <div className="absolute inset-[-10px] md:inset-[-15px] bg-slate-800 rounded-2xl transform translate-z-[-20px] shadow-2xl opacity-90"></div>
                  
-                 {/* Modals - Rendered on top of everything at z-[1000] */}
-                 {showProfileModal && <ProfileSelectorModal currentName={playerName} currentAvatar={playerAvatar} onSave={(name, avatar) => { setPlayerName(name); setPlayerAvatar(avatar); setShowProfileModal(false); }} onClose={() => setShowProfileModal(false)}/>}
-                 {showInfoModal && <GameInfoModal onClose={() => setShowInfoModal(false)} />}
-                 {showBotSelectModal && <BotSelectModal botMessages={botMessages} onSelect={(key) => { setBotLevel(key); setShowBotSelectModal(false); initGame('offline-bot'); }} onClose={() => setShowBotSelectModal(false)} />}
-
-                 {/* Decorative background effect */}
-                 <MenuBackgroundEffect />
-
-                 {/* The main menu box - Kotak Menu Utama */}
-                 <div className="relative z-10 w-full max-w-md bg-white/5 backdrop-blur-lg border border-white/20 p-8 rounded-3xl shadow-2xl text-center 
-                             /* Colorful border/ring */
-                             ring-4 ring-offset-4 ring-offset-[#154360] ring-amber-500/50
-                 ">
-                      
-                      {/* Keterangan Game */}
-                      <div className="p-4 bg-black/30 rounded-xl mb-4 border border-amber-500/30">
-                           <h3 className="text-xs font-bold uppercase text-amber-300 flex items-center justify-center gap-1 mb-2">
-                               <Aperture size={14}/> INFO GAME
-                           </h3>
-                           <p className="text-[10px] text-zinc-300 italic">Susun 3 baris berisi 5 chip tim Anda untuk menang! Gunakan Jack dengan bijak.</p>
-                      </div>
-                      
-                      <LogoFourCards />
-                      <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-amber-300 to-amber-600 mb-6 tracking-tight">SEQUENCE</h1>
-                      
-                      {/* Player Profile */}
-                      <div className="flex items-center justify-between bg-black/40 border border-white/10 rounded-xl px-4 py-2 mb-4 relative z-20">
-                           <div className="flex items-center gap-3">
-                                {/* Avatar Menu Utama (Emoji) */}
-                                <div className="flex items-center justify-center w-10 h-10 rounded-full ring-2 ring-amber-500/50 bg-white/10">
-                                    <span className="text-xl" style={{ lineHeight: 1 }}>{myAvatar}</span>
-                                </div>
-                                <span className="text-white font-bold tracking-wide">{playerName}</span>
-                           </div>
-                           <button onClick={() => setShowProfileModal(true)} className="bg-zinc-700 hover:bg-zinc-600 text-white p-2 rounded-full transition-colors">
-                               <Edit3 size={16}/>
-                           </button>
-                      </div>
-
-                      <div className="space-y-4">
-                           <div className="grid grid-cols-2 gap-3 pt-2">
-                                <button onClick={()=>setShowBotSelectModal(true)} className="relative z-20 bg-gradient-to-br from-indigo-600 to-indigo-800 hover:from-indigo-500 hover:to-indigo-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-900/30 flex flex-col items-center gap-2 transition-all hover:scale-[1.02] border border-white/10"><Bot size={24} /> VS Robot</button>
-                                <button onClick={()=>setAppMode('online-setup')} className="relative z-20 bg-gradient-to-br from-rose-600 to-rose-800 hover:from-rose-500 hover:to-rose-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-rose-900/30 flex flex-col items-center gap-2 transition-all hover:scale-[1.02] border border-white/10"><Users size={24} /> Online</button>
-                           </div>
-                           {/* Tombol INFORMASI GAME baru */}
-                           <button onClick={()=>setShowInfoModal(true)} className="relative z-20 w-full py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl font-bold text-zinc-300 text-sm flex items-center justify-center gap-2 border border-white/5 transition-all">
-                                <PlayStationIcon size={16} className="text-white"/> INFORMASI GAME
-                           </button>
-                      </div>
-
-                       <div className="mt-6 pt-4 border-t border-white/10">
-                            <p className="text-[10px] text-zinc-500">Karya Setiawan | Jangan lupa mampir di Ayam Bakar Spesial Bibir By WKA</p>
-                       </div>
+                 <div className="w-full h-full bg-slate-900 p-1 md:p-2 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] border-2 md:border-4 border-slate-700 relative">
+                     {/* WINNING LINES LAYER (UPDATED FOR VISIBILITY) */}
+                     <svg className="absolute inset-0 w-full h-full z-30 pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                        {(gameState.winningLines || []).map((line, idx) => {
+                            const x1 = (line.start.c * 10) + 5; const y1 = (line.start.r * 10) + 5;
+                            const x2 = (line.end.c * 10) + 5; const y2 = (line.end.r * 10) + 5;
+                            return (
+                                <g key={idx}>
+                                    {/* Outer Glow */}
+                                    <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={TEAM_COLORS[line.team].mainColor} strokeWidth="4" strokeLinecap="round" className="opacity-40 blur-sm"/>
+                                    {/* Main Line */}
+                                    <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={TEAM_COLORS[line.team].line} strokeWidth="1.5" strokeLinecap="round" className="drop-shadow-md"/>
+                                </g>
+                            );
+                        })}
+                     </svg>
+                     
+                     {/* GRID BACKGROUND COLOR CHANGED TO WHITE FOR ELEGANT LINES */}
+                     <div className="w-full h-full grid grid-cols-10 grid-rows-10 gap-[1px] md:gap-[2px] bg-white">
+                         {gameState.board.map((row, r) => row.map((cell, c) => {
+                             const isHighlighted = highlightedCells.some(h => h.r === r && h.c === c);
+                             return (
+                               <div key={`${r}-${c}`} 
+                                    onClick={() => {
+                                        if(!isMyTurn) return;
+                                        const cardIndex = myHand.findIndex(h => {
+                                            if (h.type === 'wild' && !cell.chip && !cell.isCorner) return true;
+                                            if (h.type === 'remove' && cell.chip && cell.chip !== myTeam && !cell.locked && !cell.isCorner) return true;
+                                            if (h.type === 'standard' && h.rank === cell.rank && h.suit === cell.suit && !cell.chip) return true;
+                                            return false;
+                                        });
+                                        if (cardIndex !== -1) playCard(cardIndex, r, c);
+                                        else { 
+                                            if (hintsEnabled) {
+                                                setNotification("Kartu tidak cocok!"); setTimeout(()=>setNotification(''),1000); vibrate(); 
+                                            }
+                                        }
+                                    }}
+                                    className={`relative bg-slate-900 flex items-center justify-center cursor-pointer transition-all duration-200 overflow-hidden
+                                      ${isHighlighted ? 'ring-2 md:ring-4 ring-yellow-400 z-10 brightness-110 shadow-[0_0_15px_yellow]' : 'hover:brightness-110'}
+                                      ${cell.locked ? 'brightness-90' : ''}
+                                    `}
+                               >
+                                   {!cell.isCorner ? (
+                                      <RealCardFace rank={cell.rank} suit={cell.suit} type={null} isHand={false} />
+                                   ) : (
+                                      // ELEGANT CORNER STYLE (WHITE TEXT)
+                                      <div className="w-full h-full bg-white/10 flex flex-col items-center justify-between p-0.5 border border-white/20 relative overflow-hidden">
+                                          <div className="absolute top-0.5 left-0.5 w-2 h-2 border-t border-l border-white/40"></div>
+                                          <div className="absolute bottom-0.5 right-0.5 w-2 h-2 border-b border-r border-white/40"></div>
+                                          <div className="text-[4px] md:text-[6px] font-serif text-white font-bold tracking-tight transform scale-75 origin-top opacity-90 drop-shadow-sm">WILD</div>
+                                          <Crown size={10} className="text-white drop-shadow-md md:w-3 md:h-3"/>
+                                          <div className="text-[4px] md:text-[6px] font-serif text-white font-bold tracking-tight transform scale-75 origin-bottom rotate-180 opacity-90 drop-shadow-sm">WILD</div>
+                                      </div>
+                                   )}
+                                   {cell.chip && TEAM_COLORS[cell.chip] && (
+                                      // POKER CHIP STYLE (Passed 'isWild' prop)
+                                      <div className={`absolute inset-[2px] md:inset-[5px] z-20 transition-all duration-500 ${cell.isRemoving ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
+                                           <PokerChip team={cell.chip} rank={cell.rank} suit={cell.suit} isWild={cell.playedWithWild} />
+                                          {cell.locked && <div className="absolute inset-0 flex items-center justify-center text-black/50 opacity-80"><RotateCcw size={10} className="md:w-3 md:h-3"/></div>} 
+                                      </div>
+                                   )}
+                               </div>
+                             );
+                         }))}
+                     </div>
                  </div>
-            </div>
-        );
-    }
+             </div>
+             ) : null}
+        </div>
 
-    if (appMode === 'online-setup') {
-        return (
-            <div className="min-h-screen bg-felt-pattern flex items-center justify-center p-4 font-sans relative">
-                 <div className="w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl relative z-10">
-                      <button onClick={()=>setAppMode('menu')} className="absolute top-4 right-4 text-zinc-500 hover:text-white transition-colors bg-white/10 rounded-full p-1"><X size={20}/></button>
-                      <h2 className="text-2xl font-bold text-white text-center mb-6 tracking-wide">LOBBY ONLINE</h2>
-                      {loadingText ? (
-                          <div className="flex flex-col items-center py-10"><Loader className="animate-spin text-amber-500 mb-4" size={32}/><p className="text-zinc-400 animate-pulse">{loadingText}</p></div>
-                      ) : (
-                          <div className="space-y-6">
-                              <div className="space-y-3">
-                                  <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider text-center block">Buat Room Baru</label>
-                                  <div className="grid grid-cols-2 gap-4">
-                                      <button onClick={()=>createRoom(2)} className="relative overflow-hidden bg-gradient-to-br from-amber-500 to-amber-700 hover:from-amber-400 hover:to-amber-600 text-white py-6 rounded-2xl font-black text-xl transition-all shadow-lg border border-amber-300/30 group"><span className="relative z-10 flex flex-col items-center"><Sword size={24} className="mb-1 opacity-80"/>1 vs 1</span><div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform"></div></button>
-                                      <button onClick={()=>createRoom(4)} className="relative overflow-hidden bg-gradient-to-br from-rose-500 to-rose-700 hover:from-rose-400 hover:to-rose-600 text-white py-6 rounded-2xl font-black text-xl transition-all shadow-lg border border-rose-300/30 group"><span className="relative z-10 flex flex-col items-center"><Users size={24} className="mb-1 opacity-80"/>2 vs 2</span><div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform"></div></button>
-                                  </div>
-                              </div>
-                              <div className="relative flex items-center py-2"><div className="flex-grow border-t border-white/10"></div><span className="flex-shrink-0 mx-4 text-zinc-600 text-[10px] font-bold uppercase">ATAU GABUNG</span><div className="flex-grow border-t border-white/10"></div></div>
-                              <div className="flex gap-2"><input type="text" value={joinCodeInput} onChange={e=>setJoinCodeInput(e.target.value)} placeholder="Masukkan Kode Room" className="flex-grow bg-black/40 border border-white/10 rounded-xl px-4 text-white focus:outline-none focus:border-amber-500 font-mono text-center tracking-widest text-lg font-bold" /><button onClick={joinRoom} className="bg-zinc-700 hover:bg-zinc-600 text-white px-6 rounded-xl font-bold transition-colors"><Play size={24}/></button></div>
-                          </div>
-                      )}
-                 </div>
-            </div>
-        );
-    }
-
-    if (appMode === 'online-share') {
-        return (
-            <div className="min-h-screen bg-felt-pattern flex items-center justify-center p-4">
-                 <div className="w-full max-w-md bg-zinc-900 border border-amber-500/20 p-8 rounded-3xl text-center animate-drop-in">
-                      <h2 className="text-zinc-400 text-sm font-bold uppercase tracking-widest mb-4">Ruangan Dibuat</h2>
-                      <div className="bg-black/50 p-6 rounded-2xl border border-white/10 mb-6">
-                          <p className="text-xs text-zinc-500 mb-2">BAGIKAN KODE INI KE TEMAN</p>
-                          <div className="text-5xl font-mono font-black text-amber-500 tracking-widest mb-4 select-all">{roomId || 'LOADING...'}</div>
-                          <button onClick={copyCode} className="mx-auto flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-full text-xs font-bold text-white transition-colors"><Copy size={14}/> SALIN KODE</button>
-                      </div>
-                      <div className="flex items-center justify-center gap-3 text-zinc-400 text-sm animate-pulse"><Loader className="animate-spin" size={16}/> Menunggu Lawan... ({roomDetails?.players?.length || 1}/{maxPlayers})</div>
-                      <button onClick={handleQuit} className="mt-8 text-rose-500 text-xs font-bold hover:underline">BATALKAN</button>
-                 </div>
-            </div>
-        );
-    }
-
-    const myTeam = appMode === 'online-game' ? getTeam(playerIndex) : 0;
-    const isBlueTeam = myTeam === 0;
-    const opponentTeam = myTeam === 0 ? 1 : 0;
-    const isMyTurn = (appMode === 'offline-bot' && turn === 0) || (appMode === 'online-game' && turn === playerIndex);
-    const timeDisplay = formatTime(timeLeft);
-    const [minutes, seconds] = timeDisplay.split(':').map(n => n.includes(':') ? n.split(':')[1] : n);
-
-    const currentTimerColor = timeLeft < 30 ? 'text-rose-500' : 'text-amber-300';
-    
-    // --- KOMPONEN BARU: Utility Button ---
-    const UtilityButton = ({ icon: Icon, onClick, title, colorClass, size = 18, isSelected = false }) => (
-        <button 
-            onClick={onClick} 
-            title={title}
-            className={`w-10 h-10 flex items-center justify-center rounded-full shadow-lg transition-all 
-                ${isSelected 
-                    ? `bg-amber-600 ${colorClass.replace('text', 'border')} border-2 text-white scale-110` 
-                    : `bg-zinc-800/80 ${colorClass} hover:bg-zinc-700/80`}
-            `}
-        >
-            <Icon size={size} className={isSelected ? 'text-white' : ''}/>
-        </button>
-    );
-
-    // --- KOMPONEN BARU: Score/Timer HUD Panel (Diubah menjadi komponen Header Bar) ---
-    const ScoreHeaderBar = ({ scores, isMyTurn, timeLeft, maxScore, turn, myIndex, opponentTeam }) => {
-        const timeDisplayFormatted = formatTime(timeLeft);
-        const [mins, secs] = timeDisplayFormatted.split(':');
-        const currentTimerColor = timeLeft < 30 ? 'text-rose-500' : 'text-amber-300';
-        
-        const isBlue = myIndex % 2 === 0;
-
-        return (
-            <div className="flex items-center justify-between px-3 py-1 bg-[#0E3355]/80 border-b border-white/5 shadow-inner">
-                {/* Score Saya (Tim Biru/Merah) */}
-                <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold transition-all ${isBlue ? 'bg-blue-900/40 text-blue-400' : 'bg-rose-900/40 text-rose-400'}`}>
-                    <Trophy size={14} />
-                    <span className="hidden sm:inline">SKOR SAYA:</span> {scores[isBlue ? 0 : 1]} / {maxScore}
-                </div>
-
-                {/* Timer (Tengah) */}
-                <div className="flex items-center gap-1">
-                    <Clock size={16} className={currentTimerColor}/>
-                    <div className="text-sm font-mono font-black tracking-wider">
-                       {isMyTurn ? mins : '5'}
-                       <span className="text-xs font-normal">:</span>
-                       {isMyTurn ? secs : '00'}
-                    </div>
-                    <span className="text-xs text-zinc-400 hidden sm:inline-block">({turn + 1})</span>
-                </div>
-                
-                {/* Score Lawan & Tombol Chat */}
-                <div className="flex items-center gap-2">
-                    <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold ${isBlue ? 'bg-rose-900/40 text-rose-400' : 'bg-blue-900/40 text-blue-400'}`}>
-                        <Users size={14} />
-                        <span className="hidden sm:inline">LAWAN:</span> {scores[isBlue ? 1 : 0]}
-                    </div>
-                </div>
-            </div>
-        );
-    };
-
-
-    return (
-        <div className="min-h-screen bg-felt-pattern text-slate-200 flex flex-col overflow-hidden relative select-none">
-             {showForfeitModal && <ForfeitConfirmationModal onConfirm={confirmForfeitAndQuit} onCancel={() => setShowForfeitModal(false)} />}
+        {/* BOTTOM CONTROLS */}
+        <div className="h-40 md:h-44 bg-gradient-to-t from-white via-white/90 to-transparent relative z-40 flex flex-col justify-end pb-2 md:pb-4 shrink-0">
+             {isMyTurn && <div className="absolute top-0 w-full flex justify-center pointer-events-none"><div className="bg-yellow-400 text-yellow-900 font-black px-4 py-1 md:px-6 md:py-2 rounded-full animate-bounce shadow-lg text-xs md:text-sm tracking-wider border border-yellow-500">GILIRANMU</div></div>}
              
-             {/* --- HEADER (CLEANED) --- */}
-             <header className="h-14 bg-[#0E3355]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-4 z-50">
-                  <div className="flex items-center gap-3">
-                      <button 
-                          onClick={handleQuit} 
-                          disabled={showForfeitModal} 
-                          className={`w-8 h-8 rounded-full bg-rose-500/10 flex items-center justify-center text-rose-500 transition-all border border-rose-500/20 z-[60]
-                              ${showForfeitModal ? 'opacity-50 cursor-not-allowed' : 'hover:bg-rose-500/30'}
-                          `}
-                      > 
-                          <X size={14}/>
-                      </button>
-                      <h1 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-amber-500 tracking-wider">SEQUENCE ULTIMATE</h1>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                        <button onClick={cycleSoundMode} className="text-zinc-500 hover:text-amber-400 transition-colors">
-                            {soundMode === 'sound' ? <Volume2 size={18}/> : soundMode === 'vibrate' ? <Smartphone size={18} className="animate-pulse"/> : <VolumeX size={18}/>}
-                        </button>
-                        <button onClick={()=>{setShowChat(!showChat); setUnreadCount(0);}} className="w-8 h-8 rounded-full bg-amber-600 border border-white/20 shadow-lg flex items-center justify-center text-white hover:scale-110 transition-transform">
-                            <MessageCircle size={16} />
-                            {unreadCount > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-[8px] flex items-center justify-center">{unreadCount}</span>}
-                        </button>
-                  </div>
-             </header>
-
-             {/* --- SCORE BAR DI BAWAH HEADER (KHUSUS HP/MOBILE) --- */}
-             <div className="md:hidden sticky top-14 z-40">
-                 <ScoreHeaderBar 
-                      scores={scores} 
-                      isMyTurn={isMyTurn} 
-                      timeLeft={timeLeft} 
-                      maxScore={WINNING_SCORE}
-                      turn={turn}
-                      myIndex={playerIndex === null ? 0 : playerIndex}
-                      opponentTeam={opponentTeam}
-                 />
+             <div className="absolute left-2 md:left-6 bottom-20 md:bottom-24 flex flex-col gap-3">
+                 <div className="relative">
+                   <button onClick={()=>{setShowChat(!showChat); setUnreadMsg(false);}} className="w-10 h-10 md:w-12 md:h-12 bg-indigo-600 rounded-2xl text-white hover:bg-indigo-500 shadow-lg shadow-indigo-200 flex items-center justify-center transition-transform hover:scale-105 active:scale-95"><MessageCircle size={20} className="md:w-6 md:h-6"/></button>
+                   {unreadMsg && !showChat && (
+                      <div className="absolute -top-2 -right-2 w-3 h-3 md:w-4 md:h-4 bg-rose-500 rounded-full border-2 border-white animate-pulse"></div>
+                   )}
+                 </div>
              </div>
 
-             {/* --- MAIN BOARD AREA - Layout Flex untuk Mobile/Desktop --- */}
-             <main className="flex-grow relative flex items-center justify-center p-2 sm:p-4 overflow-hidden">
-                  <OpponentPlayedCard card={visualPlayedCard} />
-                  
-                  {/* Container Utama: Flex column di mobile, flex row di desktop */}
-                  <div className="flex flex-col xl:flex-row items-center xl:items-start justify-center w-full max-w-screen-xl gap-4">
-                      
-                      {/* --- KIRI: UTILITY BUTTONS (Hanya untuk Desktop/Tablet) --- */}
-                      <div className="hidden md:flex flex-col items-center justify-center gap-4 w-52 p-2">
-                           {/* Panel Score/Timer untuk Desktop */}
-                           <div className="bg-[#0e3355]/90 border border-white/10 p-4 rounded-xl shadow-xl w-full max-w-sm">
-                                <div className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 ${isMyTurn ? 'border-amber-500 bg-amber-900/30' : 'border-zinc-700 bg-[#1A538A]/50'} mb-4`}>
-                                     <span className="text-[10px] font-bold uppercase text-zinc-400 block leading-none">DURASI GILIRAN {isMyTurn ? '' : 'LAWN'}</span>
-                                     <div className={`text-3xl font-mono font-black ${currentTimerColor} drop-shadow-md`}>
-                                         {isMyTurn ? minutes : '5'}
-                                         <span className="text-xl font-normal">:</span>
-                                         {isMyTurn ? seconds : '00'}
-                                     </div>
-                                </div>
-                                <div className="flex justify-between items-center mb-4">
-                                     <p className="text-lg font-bold text-white flex items-center gap-2">
-                                         <RotateCcw size={16} className="text-zinc-400"/>
-                                         GILIRAN: <span className="text-amber-300">{turn + 1}</span>
-                                     </p>
-                                     {consecutiveTimeouts > 0 && (
-                                        <div className="flex items-center gap-1 bg-rose-900/30 rounded-full px-2 py-0.5 border border-rose-500/20">
-                                             <AlertOctagon size={10} className="text-rose-400"/>
-                                             <span className="text-[10px] font-bold text-rose-300">SKIP: {consecutiveTimeouts}/2</span>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="bg-black/30 p-4 rounded-xl border border-white/10">
-                                    <h3 className="text-xs font-bold uppercase text-amber-300 mb-3 tracking-widest flex items-center justify-between">
-                                        <Trophy size={14}/> SKOR (TARGET: {WINNING_SCORE})
-                                    </h3>
-                                    
-                                    <div className="flex justify-between items-center mb-2">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xl" style={{ lineHeight: 1 }}>{playerAvatarsList[playerIndex % 2] || ALL_AVATARS[0].icon}</span>
-                                            <span className={`text-sm font-bold ${playerIndex % 2 === 0 ? 'text-blue-400' : 'text-rose-400'}`}>{playerNamesList[playerIndex % 2] || 'SAYA'}</span>
-                                        </div>
-                                        <span className="text-3xl font-black text-white">{scores[playerIndex % 2]}</span>
-                                    </div>
-
-                                    <div className="flex justify-between items-center border-t border-zinc-700 pt-2">
-                                         <div className="flex items-center gap-2">
-                                            <span className="text-xl" style={{ lineHeight: 1 }}>{playerAvatarsList[opponentTeam] || ALL_AVATARS[0].icon}</span>
-                                            <span className={`text-sm font-bold ${opponentTeam % 2 === 0 ? 'text-blue-400' : 'text-rose-400'}`}>{playerNamesList[opponentTeam] || 'LAWAN'}</span>
-                                        </div>
-                                        <span className="text-3xl font-black text-white">{scores[opponentTeam]}</span>
-                                    </div>
-                                </div>
-                           </div>
-                           
-                           {/* Utility buttons diletakkan di bawah skor di desktop */}
-                           <div className="flex justify-center gap-3 p-2 bg-[#0e3355]/50 rounded-xl border border-white/10 w-full">
-                                <UtilityButton 
-                                    icon={HelpCircle} 
-                                    onClick={() => setShowInfoModal(true)} 
-                                    title="Informasi Game" 
-                                    colorClass="text-emerald-400"
-                                />
-                          </div>
-                      </div>
-                      
-                      {/* --- TENGAH: PAPAN UTAMA (Maksimalkan Ruang) --- */}
-                      <div className="relative flex items-center justify-center w-full max-w-[95vmin] md:max-w-[70vmin] xl:max-w-none xl:w-[600px] xl:h-[600px] aspect-square">
-                          <div className="relative z-10 w-full h-full bg-board-base p-[2px] rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-white/10">
-                              <div className="w-full h-full grid grid-cols-10 gap-[1px] bg-board-base border border-white/5 relative">
-                                  {/* SVG Garis Kemenangan */}
-                                  <svg className="absolute inset-0 w-full h-full pointer-events-none z-40">
-                                      {winningLines.map((lineObj, idx) => {
-                                          const start = lineObj.line[0];
-                                          const end = lineObj.line[4];
-                                          const x1 = start.c * 10 + 5;
-                                          const y1 = start.r * 10 + 5;
-                                          const x2 = end.c * 10 + 5;
-                                          const y2 = end.r * 10 + 5;
-                                          const color = lineObj.team === 0 ? '#3b82f6' : '#f43f5e'; 
-                                          
-                                          return (
-                                              <line 
-                                                  key={idx}
-                                                  x1={`${x1}%`} y1={`${y1}%`}
-                                                  x2={`${x2}%`} y2={`${y2}%`}
-                                                  stroke={color}
-                                                  strokeWidth="3.5%"
-                                                  strokeLinecap="round"
-                                                  strokeOpacity="1"
-                                                  className="winning-line"
-                                              />
-                                          );
-                                      })}
-                                  </svg>
-
-                                  {board.map((row, r) => row.map((cell, c) => {
-                                      const isLast = lastMove && lastMove.r === r && lastMove.c === c;
-                                      let isHighlight = false;
-                                      if (selectedCardIdx !== null) {
-                                          const card = hands[appMode==='online-game'?playerIndex:turn]?.[selectedCardIdx];
-                                          if (card) {
-                                              if (cell.chip === null) {
-                                                  if (isTwoEyedJack(card.rank, card.suit)) {
-                                                      isHighlight = cell.type !== 'corner'; 
-                                                  } else if (cell.rank === card.rank && cell.suit === card.suit) {
-                                                      isHighlight = true; 
-                                                  }
-                                              } else if (isOneEyedJack(card.rank, card.suit) && getTeam(cell.chip) !== myTeam && !cell.locked) {
-                                                  isHighlight = true; 
-                                              }
-                                          }
-                                      }
-                                      const isWinningChipForCell = winningChipSet.has(cell.id);
-                                      const isError = errorCell && errorCell.r === r && errorCell.c === c;
-                                      const isAnimatingOut = animatingOutCells.has(`${r},${c}`);
-
-                                      return (
-                                          <BoardCell 
-                                              key={cell.id} 
-                                              cell={cell} 
-                                              isLast={isLast}
-                                              lastMoveType={lastMove?.type}
-                                              isHighlight={isHighlight}
-                                              isOccupiedError={isError}
-                                              animatingOut={isAnimatingOut}
-                                              onClick={handleBoardClick}
-                                              isWinningChip={isWinningChipForCell} 
-                                          />
-                                      );
-                                  }))}
-                              </div>
-                          </div>
-                      </div>
-
-                      {/* --- KANAN: HAND CARDS (Hanya untuk Desktop/Tablet) --- */}
-                      <div className="hidden xl:flex flex-col items-center justify-center gap-3 w-40 p-2 bg-[#0e3355]/50 rounded-xl border border-white/10">
-                          <p className="text-xs font-bold uppercase text-amber-300 w-full text-center">KARTU TANGAN SAYA ({hands[appMode === 'online-game' ? playerIndex : 0]?.length || 0})</p>
-                          <div className="flex flex-col gap-2 p-1">
-                            {(hands[appMode === 'online-game' ? playerIndex : 0] || []).map((card, i) => (
-                                <HandCard 
-                                    key={i} 
-                                    card={card} 
-                                    selected={selectedCardIdx === i} 
-                                    disabled={winner !== null || (appMode==='online-game' && turn !== playerIndex)}
-                                    onClick={() => { 
-                                        if (appMode === 'offline-bot' && turn !== 0) return;
-                                        if(winner===null && (appMode!=='online-game' || turn===playerIndex)) { 
-                                            playEffect('move'); setSelectedCardIdx(selectedCardIdx === i ? null : i); 
-                                        } 
-                                    }}
-                                />
-                            ))}
-                          </div>
-                      </div>
-                  </div>
-             </main>
-
-             {/* --- BOTTOM HUD (KARTU TANGAN KHUSUS MOBILE) --- */}
-             <footer className="relative z-50 pb-safe md:pb-0">
-                  <div className="h-6 bg-gradient-to-r from-transparent via-black/80 to-transparent flex items-center justify-center pointer-events-none">
-                      <p className="text-[10px] font-bold text-amber-100 drop-shadow-md tracking-wide animate-pulse">{message}</p>
-                  </div>
-                  
-                  {/* Container Kartu (Hanya Mobile/Tablet) */}
-                  <div className="xl:hidden bg-[#1A538A]/95 backdrop-blur-xl border-t border-white/10 pt-3 pb-4 px-2 flex flex-col items-center shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-                       <p className="text-xs font-bold uppercase text-amber-300 mb-2">KARTU TANGAN SAYA ({hands[appMode === 'online-game' ? playerIndex : 0]?.length || 0})</p>
-                       <div className="flex gap-2 overflow-x-auto max-w-full scrollbar-hide px-2 py-1 snap-x">
-                            {(hands[appMode === 'online-game' ? playerIndex : 0] || []).map((card, i) => (
-                                <HandCard 
-                                    key={i} 
-                                    card={card} 
-                                    selected={selectedCardIdx === i} 
-                                    disabled={winner !== null || (appMode==='online-game' && turn !== playerIndex)}
-                                    onClick={() => { 
-                                        if (appMode === 'offline-bot' && turn !== 0) return;
-                                        if(winner===null && (appMode!=='online-game' || turn===playerIndex)) { 
-                                            playEffect('move'); setSelectedCardIdx(selectedCardIdx === i ? null : i); 
-                                        } 
-                                    }}
-                                />
-                            ))}
-                       </div>
-                  </div>
-             </footer>
-
-             {/* Modals/Overlays */}
-             <ChatOverlay 
-                isOpen={showChat} 
-                onClose={()=>setShowChat(false)} 
-                chats={chats} 
-                onSend={handleSendChat}
-                myName={playerName}
-             />
-             {showInfoModal && <GameInfoModal onClose={() => setShowInfoModal(false)} />}
-             {showProfileModal && <ProfileSelectorModal currentName={playerName} currentAvatar={playerAvatar} onSave={(name, avatar) => { setPlayerName(name); setPlayerAvatar(avatar); setShowProfileModal(false); }} onClose={() => setShowProfileModal(false)}/>}
-             {showBotSelectModal && <BotSelectModal botMessages={botMessages} onSelect={(key) => { setBotLevel(key); setShowBotSelectModal(false); initGame('offline-bot'); }} onClose={() => setShowBotSelectModal(false)} />}
-
-             {toast && (
-                 <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[100] animate-drop-in">
-                     <div className={`px-6 py-3 rounded-full shadow-2xl border flex items-center gap-3 backdrop-blur-md ${toast.type==='error' ? 'bg-rose-900/80 border-rose-500/50 text-white' : 'bg-emerald-900/80 border-emerald-500/50 text-white'}`}>
-                         {toast.type==='error' ? <AlertOctagon size={18}/> : <CheckCircle size={18}/>}
-                         <span className="text-xs font-bold tracking-wide">{toast.text}</span>
+             {/* Chat Window */}
+             {showChat && (
+                 <div className="absolute left-4 bottom-32 w-64 md:w-72 bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col h-60 md:h-72 z-50 overflow-hidden animate-fade-in-up">
+                     <div className="bg-indigo-50 p-3 border-b border-indigo-100 flex justify-between items-center"><span className="text-xs font-bold text-indigo-800">OBROLAN</span><button onClick={()=>setShowChat(false)}><X size={16} className="text-indigo-400"/></button></div>
+                     <div className="flex-1 p-3 overflow-y-auto space-y-3 bg-slate-50">
+                         {gameState?.chat?.map((m,i)=>(
+                             <div key={i} className={`flex flex-col ${m.sender===playerName?'items-end':'items-start'}`}>
+                                 <div className={`px-3 py-2 rounded-xl text-xs max-w-[80%] ${m.sender===playerName?'bg-indigo-600 text-white rounded-br-none':'bg-white text-slate-700 border border-slate-200 rounded-bl-none shadow-sm'}`}>{m.text}</div>
+                             </div>
+                         ))}
+                     </div>
+                     <div className="p-2 bg-white border-t border-slate-100 flex gap-2">
+                         <div className="relative group">
+                            <button className="p-2 text-slate-400 hover:text-indigo-500 bg-slate-50 rounded-lg"><Smile size={20}/></button>
+                            <div className="absolute bottom-full left-0 mb-2 bg-white border border-slate-200 p-2 rounded-xl grid grid-cols-5 gap-1 hidden group-hover:grid w-48 shadow-xl">
+                                {EMOJIS.map(e=><button key={e} onClick={()=>setChatMessage(p=>p+e)} className="hover:bg-slate-50 rounded p-1.5 text-lg">{e}</button>)}
+                            </div>
+                         </div>
+                         <input value={chatMessage} onChange={e=>setChatMessage(e.target.value)} onKeyPress={e=>e.key==='Enter'&&sendChat()} className="flex-1 bg-slate-50 text-xs text-slate-800 outline-none px-3 rounded-lg border border-transparent focus:border-indigo-200 focus:bg-white transition-all" placeholder="Ketik pesan..."/>
                      </div>
                  </div>
              )}
 
-             {/* Tampilan Game Over - Muncul setelah jeda */}
-             {showGameOverModal && (
-                 <div className="fixed inset-0 z-[1000] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in overflow-hidden">
-                      {[...Array(20)].map((_, i) => (
-                          <div key={i} className="confetti" style={{ left: `${Math.random()*100}%`, animationDelay: `${Math.random()*2}s`, backgroundColor: Math.random()>0.5 ? '#3b82f6' : '#f43f5e' }}></div>
-                      ))}
-                      
-                      <div className="bg-[#0a0a0a] border border-white/10 p-1 rounded-3xl shadow-[0_0_100px_rgba(251,191,36,0.2)] max-w-sm w-full transform scale-110 relative z-10">
-                           <div className="bg-gradient-to-b from-zinc-900 to-black rounded-[20px] p-8 flex flex-col items-center text-center relative overflow-hidden">
-                                <div className={`absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] ${winner === 0 ? 'from-blue-500 via-transparent to-transparent' : 'from-rose-500 via-transparent to-transparent'}`}></div>
+             {/* Hand Cards - RESPONSIVE SIZING */}
+             <div className="flex justify-center items-end -space-x-2 md:-space-x-3 h-28 md:h-36 px-2 md:px-4 pb-2 md:pb-4">
+                 {myHand.map((card, idx) => {
+                     const isDead = isCardDead(card, gameState.board, myTeam);
+                     return (
+                         <div key={idx} 
+                              onClick={() => {
+                                  if (isDead) return; // Prevent playing dead card normally
+                                  vibrate();
+                                  if (isMyTurn) {
+                                      const valid = getValidMoves(card, gameState.board, myTeam);
+                                      if (hintsEnabled) {
+                                         setHighlightedCells(valid);
+                                      } else {
+                                         setHighlightedCells([]);
+                                      }
+                                  }
+                              }}
+                              className={`relative w-14 h-24 md:w-20 md:h-32 cursor-pointer transform hover:-translate-y-4 md:hover:-translate-y-8 hover:scale-110 transition-all duration-300 hover:z-50 shadow-xl rounded-lg ${isMyTurn && !isDead ?'brightness-100':'brightness-90 opacity-90'} ${isDead ? 'grayscale-[0.5]' : ''}`}
+                              style={{ transform: `rotate(${(idx-2)*6}deg) translateY(${Math.abs(idx-2)*4}px)` }}
+                         >
+                             <RealCardFace rank={card.rank} suit={card.suit} type={card.type} isHand={true} />
+                             
+                             {/* DEAD CARD INDICATOR / RECYCLE BUTTON */}
+                             {isDead && isMyTurn && (
+                                 <button 
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        recycleDeadCard(idx);
+                                    }}
+                                    className="absolute -top-2 -right-2 bg-red-500 text-white p-1 md:p-1.5 rounded-full shadow-md z-50 animate-bounce hover:bg-red-600 transition-colors"
+                                    title="Ganti Kartu Mati"
+                                 >
+                                     <RefreshCw size={10} className="md:w-3.5 md:h-3.5" />
+                                 </button>
+                             )}
+                         </div>
+                     );
+                 })}
+             </div>
+        </div>
 
-                                {/* Mengganti Crown dengan Trophy dan animasi spin */}
-                                <Trophy size={80} className={`mb-6 drop-shadow-[0_0_30px_rgba(255,255,255,0.4)] ${winner===0 ? 'text-blue-400' : 'text-rose-400'} animate-trophy-spin`} />
-                                
-                                <h2 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-zinc-400 mb-2 tracking-tighter">VICTORY!</h2>
-                                <p className={`text-xl font-bold tracking-[0.2em] mb-4 ${winner===0 ? 'text-blue-500' : 'text-rose-500'}`}>
-                                    {winner === 0 ? "TIM BIRU MENANG" : "TIM MERAH MENANG"}
-                                </p>
-                                <p className="text-xs italic text-zinc-400 mb-8">Terima kasih telah menjadi lawan yang baik.</p>
-                                
-                                <div className="flex gap-8 mb-10 w-full justify-center">
+        {notification && <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-800/90 backdrop-blur-md text-white px-6 py-3 rounded-2xl shadow-2xl z-50 animate-fade-in font-bold text-sm tracking-wide border border-white/10">{notification}</div>}
+        
+        {/* MODALS: SETTINGS, HELP, GAME OVER, EXIT - (Same Logic as Previous) */}
+        {showSettings && (
+            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+                <div className="bg-white p-6 rounded-3xl w-full max-w-xs text-center shadow-2xl animate-scale-in">
+                    <div className="flex justify-between items-center mb-8">
+                        <h2 className="text-lg font-black text-slate-800 flex items-center gap-2"><Settings className="text-indigo-500"/> PENGATURAN</h2>
+                        <button onClick={()=>setShowSettings(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"><X size={16}/></button>
+                    </div>
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                            <span className="text-slate-600 font-bold text-sm flex items-center gap-3">{soundEnabled ? <Volume2 size={18} className="text-indigo-500"/> : <VolumeX size={18} className="text-slate-400"/>} Suara</span>
+                            <button onClick={()=>setSoundEnabled(!soundEnabled)} className={`w-11 h-6 rounded-full transition-all relative ${soundEnabled ? 'bg-indigo-500' : 'bg-slate-300'}`}>
+                                <div className={`absolute top-1 bottom-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm ${soundEnabled ? 'left-6' : 'left-1'}`}></div>
+                            </button>
+                        </div>
+                        <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                            <span className="text-slate-600 font-bold text-sm flex items-center gap-3">{hintsEnabled ? <Lightbulb size={18} className="text-yellow-500"/> : <Lightbulb size={18} className="text-slate-400"/>} Sinyal Kartu</span>
+                            <button onClick={()=>setHintsEnabled(!hintsEnabled)} className={`w-11 h-6 rounded-full transition-all relative ${hintsEnabled ? 'bg-yellow-400' : 'bg-slate-300'}`}>
+                                <div className={`absolute top-1 bottom-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm ${hintsEnabled ? 'left-6' : 'left-1'}`}></div>
+                            </button>
+                        </div>
+                        <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                            <span className="text-slate-600 font-bold text-sm flex items-center gap-3"><Vibrate size={18} className="text-rose-500"/> Getar</span>
+                            <button onClick={()=>setVibrationEnabled(!vibrationEnabled)} className={`w-11 h-6 rounded-full transition-all relative ${vibrationEnabled ? 'bg-rose-500' : 'bg-slate-300'}`}>
+                                <div className={`absolute top-1 bottom-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm ${vibrationEnabled ? 'left-6' : 'left-1'}`}></div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {showHelp && (
+            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl relative animate-scale-in max-h-[85vh] overflow-y-auto">
+                    <div className="bg-indigo-50 p-4 flex justify-between items-center border-b border-indigo-100 sticky top-0 z-10">
+                        <div className="flex items-center gap-3">
+                            <h2 className="text-lg font-black text-indigo-900 flex items-center gap-2">
+                                <Info className="text-indigo-500"/> CARA BERMAIN
+                            </h2>
+                            <CardFan /> 
+                        </div>
+                        <button onClick={()=>setShowHelp(false)} className="w-8 h-8 rounded-full bg-white text-slate-400 flex items-center justify-center hover:text-indigo-500 shadow-sm"><X size={16}/></button>
+                    </div>
+                    <div className="p-6 space-y-5">
+                        <div className="flex gap-4 items-start">
+                            <div className="bg-indigo-100 w-8 h-8 rounded-full flex items-center justify-center text-indigo-600 font-bold shrink-0 text-sm">1</div>
+                            <div>
+                                <h3 className="font-bold text-slate-800 text-sm mb-1">Target Menang</h3>
+                                <p className="text-slate-500 text-xs leading-relaxed">Bentuk <span className="text-indigo-600 font-bold">2 Garis</span> (5 chip per garis) secara Horizontal, Vertikal, atau Diagonal.</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-4 items-start">
+                            <div className="bg-amber-100 w-8 h-8 rounded-full flex items-center justify-center text-amber-600 font-bold shrink-0 text-sm">2</div>
+                            <div>
+                                <h3 className="font-bold text-slate-800 text-sm mb-1">Kartu Spesial (Jack)</h3>
+                                <p className="text-slate-500 text-xs mb-1"><span className="text-rose-500 font-bold">j2 (2 Mata):</span> Wild Card. Bisa taruh chip di mana saja.</p>
+                                <p className="text-slate-500 text-xs"><span className="text-slate-700 font-bold">j1 (1 Mata):</span> Remove. Bisa hapus chip lawan yang belum terkunci.</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-4 items-start">
+                             <div className="bg-red-100 w-8 h-8 rounded-full flex items-center justify-center text-red-600 font-bold shrink-0 text-sm">!</div>
+                             <div>
+                                 <h3 className="font-bold text-slate-800 text-sm mb-1">Kartu Mati</h3>
+                                 <p className="text-slate-500 text-xs leading-relaxed">Jika kartu di tangan tidak bisa ditaruh (papan penuh), klik tombol <span className="text-red-500 font-bold">Recycle</span> di kartu untuk ganti kartu baru.</p>
+                             </div>
+                        </div>
+                        <div className="flex gap-4 items-start">
+                            <div className="bg-green-100 w-8 h-8 rounded-full flex items-center justify-center text-green-600 font-bold shrink-0 text-sm">3</div>
+                            <div>
+                                <h3 className="font-bold text-slate-800 text-sm mb-1">Sudut (Corner)</h3>
+                                <p className="text-slate-500 text-xs leading-relaxed">4 Sudut adalah area bebas. Anda hanya butuh 4 chip lagi jika terhubung ke sudut.</p>
+                                <p className="text-[10px] text-slate-400 mt-2 font-medium italic border-t border-slate-100 pt-1">powered by SETIAWAN | Jangan Lupa mampir Makan di Tempat Ayam Bakar Spesial Bibir By WKA</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* MODAL GAME OVER DENGAN PERBAIKAN TOMBOL KEMBALI */}
+        {showGameOverScreen && (
+            <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md z-[80] flex flex-col items-center justify-center p-6 animate-fade-in overflow-y-auto">
+                {gameOverReason === 'disconnect' ? (
+                     <div className="text-center">
+                         <WifiOff size={80} className="text-slate-400 mb-6 mx-auto animate-pulse" />
+                         <h1 className="text-4xl font-black text-white mb-4 tracking-tight">KONEKSI TERPUTUS</h1>
+                         <p className="text-slate-300 font-medium italic mb-8 px-4 opacity-80 max-w-sm">"Permainan seimbang karna tidak mencapai score target 2 point"</p>
+                     </div>
+                ) : (
+                    <div className="w-full max-w-sm bg-gradient-to-b from-slate-800 to-slate-900 p-1 rounded-[40px] shadow-2xl border-4 border-slate-700/50 my-auto">
+                        <div className="bg-slate-900 rounded-[36px] p-6 md:p-8 flex flex-col items-center relative overflow-hidden">
+                            
+                            {/* 3D GAME OVER TEXT */}
+                            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tighter mb-4 md:mb-6 relative z-10" style={{ textShadow: "0px 4px 0px #334155, 0px 8px 10px rgba(0,0,0,0.5)" }}>
+                                GAME OVER
+                            </h1>
+
+                            {/* ANIMATED TROPHY */}
+                            <div className="relative mb-6 md:mb-8 z-10">
+                                <Trophy size={80} className="text-yellow-400 drop-shadow-[0_0_25px_rgba(250,204,21,0.6)] animate-bounce md:w-24 md:h-24" />
+                                <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-32 h-8 bg-yellow-500/20 blur-xl rounded-full"></div>
+                            </div>
+                            
+                            {/* SCORE BOX */}
+                            <div className="bg-slate-800/80 w-full rounded-2xl p-4 border border-slate-700 mb-6 relative z-10">
+                                <p className="text-slate-400 text-[10px] font-bold tracking-widest text-center mb-3 uppercase">PEMENANG</p>
+                                <div className={`text-2xl font-black text-center mb-4 ${gameState?.winner === 'blue' ? 'text-indigo-400' : 'text-rose-400'}`}>
+                                    {gameState?.winner === 'blue' ? 'TIM BIRU' : 'TIM MERAH'}
+                                </div>
+                                <div className="flex flex-col items-center gap-2 mb-4">
+                                     {/* LIST WINNING PLAYERS */}
+                                     {gameState?.players?.filter(p => p.team === gameState.winner).map((p, i) => (
+                                         <span key={i} className="text-xs text-slate-300 font-bold">{p.name}</span>
+                                     ))}
+                                </div>
+                                <div className="flex justify-center items-center gap-6 border-t border-slate-700 pt-4">
                                     <div className="text-center">
-                                        <div className="text-xs text-zinc-500 font-bold mb-1">TIM BIRU</div>
-                                        <div className="text-4xl font-black text-blue-500">{scores[0]}</div>
+                                        <div className="text-[10px] text-indigo-400 font-bold mb-1">BIRU</div>
+                                        <div className="text-3xl font-black text-white">{gameState?.scores.blue}</div>
                                     </div>
-                                    <div className="h-12 w-[1px] bg-zinc-800"></div>
+                                    <div className="h-8 w-px bg-slate-600"></div>
                                     <div className="text-center">
-                                        <div className="text-xs text-zinc-500 font-bold mb-1">TIM MERAH</div>
-                                        <div className="text-4xl font-black text-rose-500">{scores[1]}</div>
+                                        <div className="text-[10px] text-rose-400 font-bold mb-1">MERAH</div>
+                                        <div className="text-3xl font-black text-white">{gameState?.scores.red}</div>
                                     </div>
                                 </div>
+                            </div>
 
-                                <button 
-                                    onClick={handleReturnToMenu} 
-                                    className="w-full py-4 bg-white text-black rounded-xl font-black tracking-widest hover:bg-zinc-200 transition-all hover:scale-105 active:scale-95 shadow-xl relative z-20"
-                                >
-                                    KEMBALI KE MENU UTAMA
-                                </button>
-                           </div>
-                      </div>
-                 </div>
-             )}
-        </div>
-    );
-}
+                            <p className="text-slate-400 text-xs font-medium italic mb-6 text-center opacity-80 z-10">
+                                "Terima kasih telah menjadi lawan yang baik"
+                            </p>
+                            
+                            {/* BOLD PROMO TEXT */}
+                            <div className="bg-yellow-500/10 border border-yellow-500/30 p-4 rounded-xl mb-8 z-10">
+                                <p className="text-yellow-400 font-black text-xs text-center leading-relaxed tracking-wide">
+                                    JANGAN LUPA MAMPIR & MAKAN DI TEMPAT AYAM BAKAR BIBIR SPESIAL BIBIR BY WKA
+                                </p>
+                            </div>
 
-export default function SequenceGame() {
-  return (
-    <ErrorBoundary>
-      <SequenceGameInternal />
-    </ErrorBoundary>
+                            {/* PERBAIKAN TOMBOL KEMBALI */}
+                            <button 
+                                onClick={() => {
+                                    setView('menu');
+                                    setGameState(null);
+                                    setGameOverReason(null);
+                                    setShowGameOverScreen(false); // Reset
+                                    setRoomCode(''); // CRITICAL FIX: HAPUS ROOM CODE AGAR TIDAK NYANGKUT
+                                    setGameMode('offline'); // CRITICAL FIX: RESET MODE
+                                }}
+                                className="w-full bg-white hover:bg-slate-200 text-slate-900 font-black py-4 rounded-xl shadow-lg transition-transform hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 z-10"
+                            >
+                                <Home size={18} strokeWidth={3}/> KEMBALI KE MENU
+                            </button>
+
+                             {/* Background Effects */}
+                            <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_0%,rgba(99,102,241,0.15),transparent_70%)] pointer-events-none"></div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        )}
+
+        {showExitConfirm && (
+            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+                <div className="bg-white p-6 rounded-3xl text-center max-w-xs w-full shadow-2xl animate-scale-in">
+                    <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <AlertTriangle size={32} className="text-rose-500"/>
+                    </div>
+                    <h3 className="text-slate-800 font-black text-xl mb-2">MENYERAH?</h3>
+                    <p className="text-slate-500 text-sm mb-6 leading-relaxed">Jika keluar sekarang, kamu otomatis dinyatakan <span className="font-bold text-rose-500">KALAH</span>.</p>
+                    <div className="flex gap-3">
+                        <button onClick={()=>setShowExitConfirm(false)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold transition-colors">BATAL</button>
+                        <button onClick={handleForfeit} className="flex-1 bg-rose-500 hover:bg-rose-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-rose-200 transition-colors">YA, KELUAR</button>
+                    </div>
+                </div>
+            </div>
+        )}
+    </div>
   );
 }
