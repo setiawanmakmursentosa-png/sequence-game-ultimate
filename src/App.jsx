@@ -18,8 +18,6 @@ import {
 import { 
   Bot, 
   X,
-  HelpCircle,
-  AlertTriangle,
   Volume2,
   VolumeX,
   Vibrate,
@@ -30,7 +28,6 @@ import {
   Crown,
   Home,
   Trophy,
-  Copy,
   Play,
   RotateCcw,
   LogOut,
@@ -38,19 +35,15 @@ import {
   Wifi,
   WifiOff,
   Swords, 
-  ArrowLeft,
   ShieldCheck,
   User,
-  Camera,
   Brain,
   Zap,
   Skull,
   Edit,
-  Save,
   FileText, 
-  Trash2,
   RefreshCw,
-  Loader
+  AlertTriangle
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATION ---
@@ -359,45 +352,59 @@ const RealCardFace = ({ rank, suit, type, isHand = false }) => {
     if (isJack) jackLabel = type === 'wild' ? "j2" : "j1";
 
     // RESPONSIVE TEXT SIZING
-    const rankSize = isHand ? 'text-sm md:text-lg' : 'text-[6px] md:text-[10px]';
-    const suitSize = isHand ? 'text-xs md:text-sm' : 'text-[6px] md:text-[10px]';
-    const centerSize = isHand ? 'text-4xl md:text-6xl' : 'text-lg md:text-2xl';
+    const rankSize = isHand ? 'text-sm md:text-lg' : 'text-[6px] md:text-[8px]'; // Slightly smaller for board to prevent clash
+    const suitSize = isHand ? 'text-xs md:text-sm' : 'text-[6px] md:text-[8px]';
+    // Center size increased for board cards
+    const centerSize = isHand ? 'text-4xl md:text-6xl' : 'text-3xl md:text-5xl'; 
 
     return (
         <div className={`
             relative w-full h-full rounded-[4px] md:rounded-[6px] flex flex-col justify-between overflow-hidden select-none font-serif
-            ${isHand ? 'bg-white border border-gray-300 shadow-md p-1.5' : 'bg-slate-950 border border-yellow-600/60 p-[1px] shadow-sm'}
+            ${isHand ? 'bg-white border border-gray-300 shadow-md p-1.5' : 'bg-slate-950 p-[1px] shadow-sm'}
         `} style={{ color: textColor }}>
             
-            {/* Corner Rank/Suit */}
-            <div className="flex flex-col items-center leading-none absolute top-0.5 left-0.5">
+            {/* Corner Rank/Suit - Top Left (Keep Small) */}
+            <div className="flex flex-col items-center leading-none absolute top-0.5 left-0.5 z-10">
                 <div className={`${rankSize} font-bold`}>{rank}</div>
                 <div className={`${suitSize}`}>{suit}</div>
             </div>
             
             {isJack && <div className={`absolute top-0.5 right-1 font-sans font-bold ${isHand ? 'text-[10px] md:text-xs' : 'text-[5px] text-yellow-500'}`}>{jackLabel}</div>}
             
-            {/* Center Content */}
+            {/* Center Content - Enlarged on Board, No "Box" Border for Face Cards on Board */}
             <div className="flex-1 flex items-center justify-center w-full h-full p-1">
                 {isFace ? (
-                    <div className={`w-full h-[75%] border border-opacity-20 flex flex-col items-center justify-center relative rounded 
-                        ${isHand 
-                            ? (isRed ? 'border-red-500 bg-red-50' : 'border-gray-800 bg-gray-50') 
-                            : 'border-yellow-700/30 bg-slate-900'}
-                    `}>
-                        <Crown size={isHand ? 20 : 12} strokeWidth={1.5} className={`mb-1 ${isHand ? 'opacity-70 md:w-7 md:h-7' : 'text-yellow-500 opacity-90'}`} />
-                        <div className={`${isHand ? 'text-2xl md:text-3xl' : 'text-[10px]'} leading-none font-bold`}>{suit}</div>
-                    </div>
+                    isHand ? (
+                        // HAND CARD STYLE: Boxed Crown
+                        <div className={`w-full h-[75%] border border-opacity-20 flex flex-col items-center justify-center relative rounded 
+                            ${isRed ? 'border-red-500 bg-red-50' : 'border-gray-800 bg-gray-50'}
+                        `}>
+                            <Crown size={20} strokeWidth={1.5} className="mb-1 opacity-70 md:w-7 md:h-7" />
+                            <div className="text-2xl md:text-3xl leading-none font-bold">{suit}</div>
+                        </div>
+                    ) : (
+                        // BOARD CARD STYLE: Clean, No Box, Just Big Icon
+                        <div className="flex flex-col items-center justify-center pt-2">
+                             {/* Special Crown/Icon for Face Cards on Board */}
+                             {rank === 'K' && <div className="text-[10px] md:text-[12px] font-black text-yellow-500 tracking-tighter opacity-70">KING</div>}
+                             {rank === 'Q' && <div className="text-[10px] md:text-[12px] font-black text-pink-500 tracking-tighter opacity-70">QUEEN</div>}
+                             {rank === 'J' && <div className="text-[10px] md:text-[12px] font-black text-cyan-500 tracking-tighter opacity-70">JACK</div>}
+                             
+                             <div className={`${isRed ? 'text-red-500' : 'text-slate-200'} text-3xl md:text-5xl leading-none font-bold drop-shadow-lg`}>{suit}</div>
+                        </div>
+                    )
                 ) : (
                     <div className={`${centerSize} transform scale-y-90 drop-shadow-sm`}>{suit}</div>
                 )}
             </div>
             
-            {/* Bottom Corner (Rotated) */}
-            <div className="flex flex-col items-center leading-none absolute bottom-0.5 right-0.5 transform rotate-180">
-                <div className={`${rankSize} font-bold`}>{rank}</div>
-                <div className={`${suitSize}`}>{suit}</div>
-            </div>
+            {/* Bottom Corner (Rotated) - HIDDEN ON BOARD (isHand=false) */}
+            {isHand && (
+                <div className="flex flex-col items-center leading-none absolute bottom-0.5 right-0.5 transform rotate-180">
+                    <div className={`${rankSize} font-bold`}>{rank}</div>
+                    <div className={`${suitSize}`}>{suit}</div>
+                </div>
+            )}
         </div>
     );
 };
@@ -628,8 +635,8 @@ export default function SequenceGame() {
           setTimeout(() => {
               setInterstitialStep(0);
               if (callback) callback();
-          }, 3000);
-      }, 3000);
+          }, 2000); // 2 Seconds
+      }, 2000); // 2 Seconds
   };
 
   // --- LOGIC: RECYCLE DEAD CARD ---
@@ -918,16 +925,28 @@ export default function SequenceGame() {
 
   if (interstitialStep > 0) return (
       <div className="fixed inset-0 bg-slate-900 z-[100] flex items-center justify-center p-6 flex-col text-center">
+            {/* DEFINISI STYLE ANIMASI DIPINDAH KESINI AGAR AKTIF DI KEDUA STEP */}
+           <style>{`
+               @keyframes loading-bar {
+                   0% { transform: translateX(-100%); }
+                   50% { transform: translateX(0%); }
+                   100% { transform: translateX(100%); }
+               }
+               .animate-loading-bar {
+                   animation: loading-bar 1.5s infinite linear;
+               }
+           `}</style>
+          
           {interstitialStep === 1 && (
               <div className="animate-fade-in-down">
                    <div className="text-6xl mb-6">🍗</div>
                    <h1 className="text-3xl md:text-5xl font-black text-yellow-400 tracking-tight leading-tight">
                        Sudah Coba <br/><span className="text-white">Ayam Bakar Bibir ?</span>
                    </h1>
-                   <div className="mt-8 animate-bounce">
-                       <div className="w-16 h-1 bg-white/20 rounded-full mx-auto overflow-hidden">
-                           <div className="w-1/2 h-full bg-yellow-400 animate-[loading_1s_ease-in-out_infinite]"></div>
-                       </div>
+                   
+                   {/* LOADING BAR (Model Panjang Horizontal) */}
+                   <div className="w-64 h-4 bg-slate-800 rounded-full mt-8 overflow-hidden mx-auto border border-slate-700 relative shadow-inner">
+                       <div className="absolute top-0 left-0 h-full bg-green-500 animate-loading-bar w-full"></div>
                    </div>
               </div>
           )}
@@ -936,6 +955,11 @@ export default function SequenceGame() {
                    <h1 className="text-4xl md:text-6xl font-black text-white tracking-widest drop-shadow-[0_0_25px_rgba(255,255,255,0.5)]">
                        AYO MULAI<br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">PERMAINAN !</span>
                    </h1>
+                   
+                   {/* LOADING BAR (Model Panjang Horizontal) */}
+                   <div className="w-64 h-4 bg-slate-800 rounded-full mt-8 overflow-hidden mx-auto border border-slate-700 relative shadow-inner">
+                       <div className="absolute top-0 left-0 h-full bg-green-500 animate-loading-bar w-full"></div>
+                   </div>
               </div>
           )}
       </div>
@@ -1146,7 +1170,7 @@ export default function SequenceGame() {
 
                  {/* WAITING SIGNAL LOGIC */}
                  {gameState?.status==='playing' ? (
-                     <div className="animate-pulse text-indigo-400 font-bold flex items-center justify-center gap-2"><Loader className="animate-spin"/> Game Sedang Berlangsung...</div>
+                     <div className="animate-pulse text-indigo-400 font-bold flex items-center justify-center gap-2"><RefreshCw className="animate-spin" size={16}/> Game Sedang Berlangsung...</div>
                  ) : (
                      isRoomFull ? (
                          // SIGNAL: ROOM FULL -> SHOW START BUTTON
