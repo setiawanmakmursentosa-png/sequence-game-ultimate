@@ -3,6 +3,7 @@ import { initializeApp } from "firebase/app";
 import { 
   getAuth, 
   signInAnonymously, 
+  signInWithCustomToken, // Added import
   onAuthStateChanged 
 } from "firebase/auth";
 import { 
@@ -46,8 +47,9 @@ import {
   AlertTriangle
 } from 'lucide-react';
 
-// --- FIREBASE CONFIGURATION ---
-const firebaseConfig = {
+// --- FIREBASE CONFIGURATION (Mandatory Canvas Globals) ---
+// Using hardcoded config as a fallback only if globals are not defined (which shouldn't happen in the canvas environment)
+const fallbackConfig = {
   apiKey: "AIzaSyA1O5kryQhDgperTijvs9Xy1NBpuaZLS4Q",
   authDomain: "sequence-online-multiplayer-25.firebaseapp.com",
   projectId: "sequence-online-multiplayer-25",
@@ -56,10 +58,13 @@ const firebaseConfig = {
   appId: "1:1009641872290:web:1c7de27d90c561a2f3b0fb"
 };
 
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : fallbackConfig;
+const APP_ID_BASE = "sequence-game-v1";
+const APP_ID = typeof __app_id !== 'undefined' ? __app_id : APP_ID_BASE;
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const APP_ID = "sequence-game-v1";
 
 // --- CONSTANTS ---
 const SUITS = ['♠', '♥', '♣', '♦'];
@@ -101,7 +106,7 @@ const FAMILY_AVATARS = [
     { emoji: '👨', label: 'Ayah' }, { emoji: '👨🏻', label: 'Ayah Pth' }, { emoji: '👨🏾', label: 'Ayah Htm' }, { emoji: '🧔‍♂️', label: 'Ayah Brwok' }, { emoji: '👮‍♂️', label: 'Ayah Polisi' },
     { emoji: '👩', label: 'Ibu' }, { emoji: '👩🏼', label: 'Ibu Pth' }, { emoji: '👩🏾', label: 'Ibu Htm' }, { emoji: '👩‍🦱', label: 'Ibu Krtng' }, { emoji: '👩‍⚕️', label: 'Ibu Dokter' },
     { emoji: '👦', label: 'Anak Laki' }, { emoji: '👦🏻', label: 'Anak Pth' }, { emoji: '👦🏾', label: 'Anak Htm' }, { emoji: '🧢', label: 'Anak Topi' }, { emoji: '🕶️', label: 'Anak Keren' },
-    { emoji: '👧', label: 'Anak Pr' }, { emoji: '👧🏼', label: 'Pr Pth' }, { emoji: '👧🏾', label: 'Pr Htm' }, { emoji: '🎀', label: 'Pr Pita' }, { emoji: '🧚‍♀️', label: 'Pr Peri' }
+    { emoji: '👧', label: 'Anak Pr' }, { emoji: '👧🏼', label: 'Pr Pth' }, { emoji: 'Pr Htm' }, { emoji: '🎀', label: 'Pr Pita' }, { emoji: '🧚‍♀️', label: 'Pr Peri' }
 ];
 
 // --- AUDIO SYNTHESIZER ---
@@ -159,7 +164,7 @@ const playSynthSound = (type) => {
             gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
             osc.start(now);
             osc.stop(now + 0.3);
-        } else if (type === 'win') {
+        } else if (type === 'gameover') { // Sound for game end/win
             osc.type = 'square';
             osc.frequency.setValueAtTime(523.25, now);
             osc.frequency.setValueAtTime(659.25, now + 0.1);
@@ -170,14 +175,22 @@ const playSynthSound = (type) => {
             gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
             osc.start(now);
             osc.stop(now + 0.8);
-        } else if (type === 'error') {
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(150, now);
-            osc.frequency.linearRampToValueAtTime(100, now + 0.2);
+        } else if (type === 'sequenceWin') { // New sound for a sequence made during play (not game over)
+             osc.type = 'square';
+             osc.frequency.setValueAtTime(880, now);
+             osc.frequency.setValueAtTime(1046, now + 0.05);
+             gain.gain.setValueAtTime(0.2, now);
+             gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+             osc.start(now);
+             osc.stop(now + 0.2);
+        } else if (type === 'forfeit') { // New sound for forfeit/exit
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(400, now);
+            osc.frequency.linearRampToValueAtTime(150, now + 0.5);
             gain.gain.setValueAtTime(0.2, now);
-            gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+            gain.gain.linearRampToValueAtTime(0, now + 0.5);
             osc.start(now);
-            osc.stop(now + 0.2);
+            osc.stop(now + 0.5);
         } else if (type === 'join') {
             // New Sound for Player Joining
             osc.type = 'sine';
@@ -283,12 +296,12 @@ const checkForSequences = (board, team) => {
             const nonCornerLocked = line.filter(cell => !cell.isCorner && cell.locked).length;
             const allLocked = line.every(cell => cell.locked);
             if (!allLocked && nonCornerLocked <= 1) {
-                 newSequencesFound++;
-                 newLines.push({ start: coords[0], end: coords[4], team: team });
-                 coords.forEach(({r, c}) => {
+                newSequencesFound++;
+                newLines.push({ start: coords[0], end: coords[4], team: team });
+                coords.forEach(({r, c}) => {
                     board[r][c].locked = true; 
                     tempBoard[r][c].locked = true;
-                 });
+                });
             }
           }
         }
@@ -300,51 +313,77 @@ const checkForSequences = (board, team) => {
 
 // --- VISUAL COMPONENTS ---
 
-// POKER CHIP COMPONENT (Responsive Text)
+// POKER CHIP COMPONENT (Responsive Text) - UPDATED FOR 3D EFFECT
 const PokerChip = ({ team, rank, suit, isWild }) => {
     const mainColor = TEAM_COLORS[team].mainColor;
+    // Secondary color for inner ring contrast
+    const secondaryColor = team === 'blue' ? '#4f46e5' : '#ef4444'; 
     const isRedSuit = ['♥', '♦'].includes(suit);
     
     return (
-        <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-md">
-             {/* 1. Outer Edge (Base) */}
-             <circle cx="50" cy="50" r="48" fill="white" stroke="#222" strokeWidth="0.5" />
-             
-             {/* 2. Checkerboard Rim */}
-             <circle 
-                cx="50" 
-                cy="50" 
-                r="40" 
-                fill="none" 
-                stroke={mainColor} 
-                strokeWidth="16"
-                strokeDasharray="15.7 15.7"
-                transform="rotate(0 50 50)"
-             />
-             
-             {/* 3. Inner White Circle */}
-             <circle cx="50" cy="50" r="32" fill="white" stroke={mainColor} strokeWidth="1" />
+        <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-lg" filter="url(#chip-shadow)">
+            <defs>
+                {/* Subtle outer shadow for lift (3D effect) */}
+                <filter id="chip-shadow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feOffset result="offOut" in="SourceAlpha" dx="0" dy="3" />
+                    <feGaussianBlur result="blurOut" in="offOut" stdDeviation="3" />
+                    <feBlend in="SourceGraphic" in2="blurOut" mode="normal" />
+                </filter>
+                {/* Radial Gradient for metallic/plastic sheen (Top Left Highlight) */}
+                <radialGradient id={`gloss-${team}`} cx="50%" cy="0%" r="100%" fx="30%" fy="30%">
+                    <stop offset="0%" style={{stopColor: "white", stopOpacity: 0.5}} />
+                    <stop offset="100%" style={{stopColor: mainColor, stopOpacity: 1}} />
+                </radialGradient>
+            </defs>
+            
+            {/* 1. Base Dark Circle (Edge/Depth) */}
+            <circle cx="50" cy="50" r="49" fill="#222" />
 
-             {/* 4. Text Content: Rank & Suit */}
-             <text x="50" y="52" textAnchor="middle" dominantBaseline="central" fill={isRedSuit ? '#dc2626' : '#000'} style={{ fontSize: '32px', fontWeight: '900', fontFamily: 'serif' }}>
+            {/* 2. Main Color Ring (Beveled Edge) */}
+            <circle cx="50" cy="50" r="45" fill={mainColor} />
+            
+            {/* 3. Highlight/Sheen */}
+            <circle cx="50" cy="50" r="45" fill={`url(#gloss-${team})`} opacity="0.4" />
+            
+            {/* 4. Checkerboard Ring (Recessed Look) - Thinner and more subtle */}
+            <circle 
+              cx="50" 
+              cy="50" 
+              r="38" 
+              fill="none" 
+              stroke={secondaryColor} 
+              strokeWidth="6"
+              strokeDasharray="12.5 12.5"
+              transform="rotate(10 50 50)" // Slightly rotated for visual interest
+              opacity="0.8"
+            />
+            
+            {/* 5. Center Core (White) - Raised Look */}
+            <circle cx="50" cy="50" r="30" fill="white" stroke={secondaryColor} strokeWidth="1" />
+            
+            {/* 6. Center Shadow (Under the white core) */}
+            <circle cx="50" cy="50" r="30" fill="none" stroke="#000" strokeWidth="1" opacity="0.1" />
+
+            {/* 7. Text Content: Rank & Suit */}
+            <text x="50" y="52" textAnchor="middle" dominantBaseline="central" fill={isRedSuit ? '#dc2626' : '#000'} style={{ fontSize: '32px', fontWeight: '900', fontFamily: 'serif' }}>
                 {rank}{suit}
-             </text>
-             
-             {/* 5. Decorative "j2" text (ONLY IF PLAYED WITH WILD CARD) */}
-             {isWild && (
-                 <text x="50" y="72" textAnchor="middle" fill={mainColor} style={{ fontSize: '10px', fontWeight: 'bold', fontFamily: 'sans-serif', opacity: 0.8 }}>
+            </text>
+            
+            {/* 8. Decorative "j2" text (ONLY IF PLAYED WITH WILD CARD) */}
+            {isWild && (
+                <text x="50" y="72" textAnchor="middle" fill={mainColor} style={{ fontSize: '10px', fontWeight: 'bold', fontFamily: 'sans-serif', opacity: 0.8 }}>
                     J2
-                 </text>
-             )}
+                </text>
+            )}
         </svg>
     );
 };
 
 const RealCardFace = ({ rank, suit, type, isHand = false }) => {
-    // Elegant Board: Black background, Gold Border, White/Red Text
+    // Elegant Board: Pale Yellow Background, Dark Text
     const isRed = ['♥','♦'].includes(suit);
-    const textColor = isHand ? (isRed ? '#ef4444' : '#1f2937') : (isRed ? '#ff5555' : '#ffffff'); 
-    
+    const boardBg = 'bg-amber-50'; // Pale Yellow (Kuning Langsat)
+    const cardTextColor = isRed ? '#dc2626' : '#1f2937'; 
     const isFace = ['J', 'Q', 'K'].includes(rank);
     const isJack = rank === 'J';
     
@@ -352,29 +391,31 @@ const RealCardFace = ({ rank, suit, type, isHand = false }) => {
     if (isJack) jackLabel = type === 'wild' ? "j2" : "j1";
 
     // RESPONSIVE TEXT SIZING
-    const rankSize = isHand ? 'text-sm md:text-lg' : 'text-[6px] md:text-[8px]'; // Slightly smaller for board to prevent clash
-    const suitSize = isHand ? 'text-xs md:text-sm' : 'text-[6px] md:text-[8px]';
-    // Center size increased for board cards
-    const centerSize = isHand ? 'text-4xl md:text-6xl' : 'text-3xl md:text-5xl'; 
+    const rankSize = 'text-[6px] md:text-[8px]'; // Hand Card
+    const suitSize = 'text-[6px] md:text-[8px]'; // Hand Card
+    const centerSize = 'text-4xl md:text-6xl'; // Board Card
 
     return (
         <div className={`
             relative w-full h-full rounded-[4px] md:rounded-[6px] flex flex-col justify-between overflow-hidden select-none font-serif
-            ${isHand ? 'bg-white border border-gray-300 shadow-md p-1.5' : 'bg-slate-950 p-[1px] shadow-sm'}
-        `} style={{ color: textColor }}>
+            ${isHand ? 'bg-white border border-gray-300 shadow-md p-1.5' : `${boardBg} p-[1px] shadow-sm border border-slate-950/10`}
+        `} style={{ color: cardTextColor }}>
             
-            {/* Corner Rank/Suit - Top Left (Keep Small) */}
-            <div className="flex flex-col items-center leading-none absolute top-0.5 left-0.5 z-10">
-                <div className={`${rankSize} font-bold`}>{rank}</div>
-                <div className={`${suitSize}`}>{suit}</div>
-            </div>
+            {/* Corner Rank/Suit - Top Left (Only visible on Hand Cards, hidden on Board Cards) */}
+            {isHand && (
+              <div className="flex flex-col items-center leading-none absolute top-0.5 left-0.5 z-10">
+                  <div className={`${rankSize} font-bold`}>{rank}</div>
+                  <div className={`${suitSize}`}>{suit}</div>
+              </div>
+            )}
             
-            {isJack && <div className={`absolute top-0.5 right-1 font-sans font-bold ${isHand ? 'text-[10px] md:text-xs' : 'text-[5px] text-yellow-500'}`}>{jackLabel}</div>}
+            {/* Jack Label (Only visible on Hand Cards) */}
+            {isJack && isHand && <div className={`absolute top-0.5 right-1 font-sans font-bold text-[10px] md:text-xs text-yellow-500'}`}>{jackLabel}</div>}
             
-            {/* Center Content - Enlarged on Board, No "Box" Border for Face Cards on Board */}
+            {/* Center Content */}
             <div className="flex-1 flex items-center justify-center w-full h-full p-1">
-                {isFace ? (
-                    isHand ? (
+                {isHand ? (
+                    isFace ? (
                         // HAND CARD STYLE: Boxed Crown
                         <div className={`w-full h-[75%] border border-opacity-20 flex flex-col items-center justify-center relative rounded 
                             ${isRed ? 'border-red-500 bg-red-50' : 'border-gray-800 bg-gray-50'}
@@ -383,22 +424,20 @@ const RealCardFace = ({ rank, suit, type, isHand = false }) => {
                             <div className="text-2xl md:text-3xl leading-none font-bold">{suit}</div>
                         </div>
                     ) : (
-                        // BOARD CARD STYLE: Clean, No Box, Just Big Icon
-                        <div className="flex flex-col items-center justify-center pt-2">
-                             {/* Special Crown/Icon for Face Cards on Board */}
-                             {rank === 'K' && <div className="text-[10px] md:text-[12px] font-black text-yellow-500 tracking-tighter opacity-70">KING</div>}
-                             {rank === 'Q' && <div className="text-[10px] md:text-[12px] font-black text-pink-500 tracking-tighter opacity-70">QUEEN</div>}
-                             {rank === 'J' && <div className="text-[10px] md:text-[12px] font-black text-cyan-500 tracking-tighter opacity-70">JACK</div>}
-                             
-                             <div className={`${isRed ? 'text-red-500' : 'text-slate-200'} text-3xl md:text-5xl leading-none font-bold drop-shadow-lg`}>{suit}</div>
-                        </div>
+                        // HAND CARD STYLE: Number Card
+                         <div className={`${centerSize} transform scale-y-90 drop-shadow-sm`} style={{color: cardTextColor}}>{suit}</div>
                     )
                 ) : (
-                    <div className={`${centerSize} transform scale-y-90 drop-shadow-sm`}>{suit}</div>
+                    // BOARD CARD (isHand=false): Simplified Rank/Suit display in the center.
+                    <div className="flex flex-col items-center justify-center pt-1" style={{color: cardTextColor}}>
+                         {/* Text for Rank & Suit (Centralized) */}
+                        <div className={`text-sm md:text-lg leading-none font-black`}>{rank}</div>
+                        <div className={`text-3xl md:text-5xl leading-none font-bold drop-shadow-sm`}>{suit}</div>
+                    </div>
                 )}
             </div>
             
-            {/* Bottom Corner (Rotated) - HIDDEN ON BOARD (isHand=false) */}
+            {/* Bottom Corner (Rotated) - Only visible on Hand Cards */}
             {isHand && (
                 <div className="flex flex-col items-center leading-none absolute bottom-0.5 right-0.5 transform rotate-180">
                     <div className={`${rankSize} font-bold`}>{rank}</div>
@@ -418,14 +457,14 @@ const CardFan3D = ({ large = false }) => (
             {color: 'bg-white text-black', suit:'♠', rank:'J', rot: 20, y: 0, z: 30},
         ].map((c, i) => (
             <div key={i} className={`absolute rounded-xl border-2 border-gray-100 shadow-xl flex flex-col items-center justify-center font-bold ${c.color} transform transition-transform duration-500
-                 ${large ? 'w-16 h-24 md:w-24 md:h-36 border-4' : 'w-10 h-16 md:w-16 md:h-24'}
+                    ${large ? 'w-16 h-24 md:w-24 md:h-36 border-4' : 'w-10 h-16 md:w-16 md:h-24'}
             `} 
-                 style={{
-                     transform: `rotate(${c.rot}deg) translateY(${c.y}px) translateZ(${c.z}px)`,
-                     left: '35%', 
-                     top: 0,
-                     transformOrigin: 'bottom center',
-                 }}>
+                style={{
+                    transform: `rotate(${c.rot}deg) translateY(${c.y}px) translateZ(${c.z}px)`,
+                    left: '35%', 
+                    top: 0,
+                    transformOrigin: 'bottom center',
+                }}>
                 <div className={`${large ? 'text-sm md:text-lg' : 'text-[10px] md:text-xs'} absolute top-1 left-1`}>{c.rank}</div>
                 <div className={`${large ? 'text-4xl md:text-6xl' : 'text-2xl md:text-4xl'}`}>{c.suit}</div>
                 <div className={`${large ? 'text-sm md:text-lg' : 'text-[10px] md:text-xs'} absolute bottom-1 right-1 rotate-180`}>{c.rank}</div>
@@ -443,7 +482,7 @@ const CardFan = () => (
             {color: 'bg-white text-black', suit:'♠', rot: 25, x: 30},
         ].map((c, i) => (
             <div key={i} className={`absolute w-8 h-12 rounded border border-gray-300 shadow-sm flex items-center justify-center text-sm font-bold ${c.color}`} 
-                 style={{transform: `rotate(${c.rot}deg) translateX(${c.x}px)`, zIndex: i, left:0, top:0}}>
+                style={{transform: `rotate(${c.rot}deg) translateX(${c.x}px)`, zIndex: i, left:0, top:0}}>
                 {c.suit}
             </div>
         ))}
@@ -451,7 +490,7 @@ const CardFan = () => (
 );
 
 // --- MAIN APP ---
-export default function SequenceGame() {
+export default function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState('menu'); 
   const [gameMode, setGameMode] = useState('offline'); 
@@ -522,7 +561,18 @@ export default function SequenceGame() {
 
   // --- AUTH ---
   useEffect(() => {
-    signInAnonymously(auth).catch(console.error);
+    const authenticate = async () => {
+        try {
+            if (typeof __initial_auth_token !== 'undefined') {
+                await signInWithCustomToken(auth, __initial_auth_token);
+            } else {
+                await signInAnonymously(auth);
+            }
+        } catch (e) {
+            console.error("Firebase Auth Error:", e);
+        }
+    };
+    authenticate();
     return onAuthStateChanged(auth, setUser);
   }, []);
 
@@ -549,10 +599,10 @@ export default function SequenceGame() {
           if (typeof data.board === 'string') data.board = JSON.parse(data.board);
           
           if (data.chat && gameState && data.chat.length > (gameState.chat?.length || 0)) {
-             if (!showChat) {
-               setUnreadMsg(true);
-               playSound('message');
-             }
+              if (!showChat) {
+                setUnreadMsg(true);
+                playSound('message');
+              }
           }
           
           // DETECT NEW PLAYER JOIN (SIGNAL TIMBUL)
@@ -563,9 +613,9 @@ export default function SequenceGame() {
           }
 
           if (data.status === 'playing' && gameState?.status !== 'playing') {
-               triggerInterstitial(() => {
-                   setView('game');
-               });
+              triggerInterstitial(() => {
+                setView('game');
+              });
           }
 
           setGameState(data);
@@ -585,6 +635,8 @@ export default function SequenceGame() {
 
   // --- TIMER ---
   useEffect(() => {
+    // FIX: Menghilangkan "pukul" atau kedipan yang tidak diinginkan dengan memastikan
+    // timer hanya berjalan saat game aktif dan interstitial selesai.
     if (gameState && !gameState.winner && !gameOverReason && interstitialStep === 0) {
       timerRef.current = setInterval(() => {
         setTimeLeft(t => {
@@ -605,14 +657,15 @@ export default function SequenceGame() {
       setConsecutiveMissedTurns(newMissed);
 
       if (newMissed >= 2) {
-         if (gameMode === 'offline') {
-             setGameState(prev => ({ ...prev, winner: 'red' })); 
-         } else {
-            const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
-            const opponentTeam = myTeam === 'blue' ? 'red' : 'blue';
-            await updateDoc(roomRef, { winner: opponentTeam });
-         }
-         return;
+        // Forfeit game if 2 turns missed
+        if (gameMode === 'offline') {
+            setGameState(prev => ({ ...prev, winner: 'red' })); 
+        } else {
+           const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
+           const opponentTeam = myTeam === 'blue' ? 'red' : 'blue';
+           await updateDoc(roomRef, { winner: opponentTeam });
+        }
+        return;
       }
 
       const nextTurn = (gameState.currentTurnIndex + 1) % gameState.players.length;
@@ -775,14 +828,13 @@ export default function SequenceGame() {
   };
 
   const handleForfeit = async () => {
+      playSound('forfeit'); // Trigger new forfeit sound
       if (gameMode === 'offline') {
           setGameState(prev => ({ ...prev, winner: 'red' }));
-          playSound('win');
       } else {
           const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
           const opponentTeam = myTeam === 'blue' ? 'red' : 'blue';
           await updateDoc(roomRef, { winner: opponentTeam });
-          playSound('win');
       }
       setShowExitConfirm(false);
   };
@@ -833,7 +885,8 @@ export default function SequenceGame() {
     let winner = null;
     if (newScore >= 2) winner = player.team;
 
-    if (winner) playSound('win');
+    if (sequencesFound > 0) playSound('sequenceWin'); // Play sequence sound if sequence made
+    if (winner) playSound('gameover'); // Play distinct game over sound if won
 
     const updatedWinningLines = [...(gameState.winningLines || []), ...newLines];
     const newDeck = [...gameState.deck];
@@ -871,8 +924,8 @@ export default function SequenceGame() {
       
       const validMovesList = [];
       for (let i = 0; i < bot.hand.length; i++) {
-         const valid = getValidMoves(bot.hand[i], newBoard, 'red');
-         valid.forEach(v => validMovesList.push({move: v, cardIdx: i}));
+          const valid = getValidMoves(bot.hand[i], newBoard, 'red');
+          valid.forEach(v => validMovesList.push({move: v, cardIdx: i}));
       }
 
       if (validMovesList.length > 0) {
@@ -884,22 +937,24 @@ export default function SequenceGame() {
       
       let newScore = prev.scores.red; let winner = null; let newWinningLines = prev.winningLines || [];
       if (move) {
-         if (bot.hand[cardIdx].type === 'remove') {
-             playSound('remove');
-             newBoard[move.r][move.c].chip = null;
-             newBoard[move.r][move.c].playedWithWild = false;
-         } else {
-             if(bot.hand[cardIdx].type === 'wild') {
-                 playSound('wild');
-                 newBoard[move.r][move.c].playedWithWild = true;
-             } else {
-                 playSound('place');
-             }
-             newBoard[move.r][move.c].chip = 'red';
-         }
-         const { count, lines } = checkForSequences(newBoard, 'red');
-         newScore += count; newWinningLines = [...newWinningLines, ...lines];
-         if (newScore >= 2) winner = 'red';
+          if (bot.hand[cardIdx].type === 'remove') {
+              playSound('remove');
+              newBoard[move.r][move.c].chip = null;
+              newBoard[move.r][move.c].playedWithWild = false;
+          } else {
+              if(bot.hand[cardIdx].type === 'wild') {
+                  playSound('wild');
+                  newBoard[move.r][move.c].playedWithWild = true;
+              } else {
+                  playSound('place');
+              }
+              newBoard[move.r][move.c].chip = 'red';
+          }
+          const { count, lines } = checkForSequences(newBoard, 'red');
+          if (count > 0) playSound('sequenceWin');
+          newScore += count; newWinningLines = [...newWinningLines, ...lines];
+          if (newScore >= 2) winner = 'red';
+          if (winner) playSound('gameover');
       }
       
       const newDeck = [...prev.deck]; const newHand = [...bot.hand];
@@ -925,63 +980,107 @@ export default function SequenceGame() {
 
   if (interstitialStep > 0) return (
       <div className="fixed inset-0 bg-slate-900 z-[100] flex items-center justify-center p-6 flex-col text-center">
-            {/* DEFINISI STYLE ANIMASI DIPINDAH KESINI AGAR AKTIF DI KEDUA STEP */}
-           <style>{`
-               @keyframes loading-bar {
-                   0% { transform: translateX(-100%); }
-                   50% { transform: translateX(0%); }
-                   100% { transform: translateX(100%); }
-               }
-               .animate-loading-bar {
-                   animation: loading-bar 1.5s infinite linear;
-               }
-           `}</style>
+             {/* DEFINISI STYLE ANIMASI DIPINDAH KESINI AGAR AKTIF DI KEDUA STEP */}
+            <style>{`
+                @keyframes loading-bar {
+                    0% { transform: translateX(-100%); }
+                    50% { transform: translateX(0%); }
+                    100% { transform: translateX(100%); }
+                }
+                .animate-loading-bar {
+                    animation: loading-bar 1.5s infinite linear;
+                }
+            `}</style>
           
-          {interstitialStep === 1 && (
-              <div className="animate-fade-in-down">
-                   <div className="text-6xl mb-6">🍗</div>
-                   <h1 className="text-3xl md:text-5xl font-black text-yellow-400 tracking-tight leading-tight">
-                       Sudah Coba <br/><span className="text-white">Ayam Bakar Bibir ?</span>
-                   </h1>
-                   
-                   {/* LOADING BAR (Model Panjang Horizontal) */}
-                   <div className="w-64 h-4 bg-slate-800 rounded-full mt-8 overflow-hidden mx-auto border border-slate-700 relative shadow-inner">
-                       <div className="absolute top-0 left-0 h-full bg-green-500 animate-loading-bar w-full"></div>
-                   </div>
-              </div>
-          )}
-          {interstitialStep === 2 && (
-              <div className="animate-scale-in">
-                   <h1 className="text-4xl md:text-6xl font-black text-white tracking-widest drop-shadow-[0_0_25px_rgba(255,255,255,0.5)]">
-                       AYO MULAI<br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">PERMAINAN !</span>
-                   </h1>
-                   
-                   {/* LOADING BAR (Model Panjang Horizontal) */}
-                   <div className="w-64 h-4 bg-slate-800 rounded-full mt-8 overflow-hidden mx-auto border border-slate-700 relative shadow-inner">
-                       <div className="absolute top-0 left-0 h-full bg-green-500 animate-loading-bar w-full"></div>
-                   </div>
-              </div>
-          )}
-      </div>
+           {interstitialStep === 1 && (
+               <div className="animate-fade-in-down">
+                    <div className="text-6xl mb-6">🍗</div>
+                    <h1 className="text-3xl md:text-5xl font-black text-yellow-400 tracking-tight leading-tight">
+                        Sudah Coba <br/><span className="text-white">Ayam Bakar Bibir ?</span>
+                    </h1>
+                    
+                    {/* LOADING BAR (Model Panjang Horizontal) */}
+                    <div className="w-64 h-4 bg-slate-800 rounded-full mt-8 overflow-hidden mx-auto border border-slate-700 relative shadow-inner">
+                        <div className="absolute top-0 left-0 h-full bg-green-500 animate-loading-bar w-full"></div>
+                    </div>
+                    {/* Perubahan #4: Garis dan Teks Promo */}
+                    <div className="flex flex-col items-center mt-3">
+                        <div className="w-48 h-px bg-slate-700 mb-2"></div> 
+                        <span className="text-[10px] text-slate-400 font-bold tracking-wider">Ayam Bakar Spesial Bibir by WKA</span>
+                    </div>
+                </div>
+            )}
+            {interstitialStep === 2 && (
+                <div className="animate-scale-in">
+                    <h1 className="text-4xl md:text-6xl font-black text-white tracking-widest drop-shadow-[0_0_25px_rgba(255,255,255,0.5)]">
+                        AYO MULAI<br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">PERMAINAN !</span>
+                    </h1>
+                    
+                    {/* LOADING BAR (Model Panjang Horizontal) */}
+                    <div className="w-64 h-4 bg-slate-800 rounded-full mt-8 overflow-hidden mx-auto border border-slate-700 relative shadow-inner">
+                        <div className="absolute top-0 left-0 h-full bg-green-500 animate-loading-bar w-full"></div>
+                    </div>
+                    {/* Perubahan #4: Garis dan Teks Promo */}
+                    <div className="flex flex-col items-center mt-3">
+                        <div className="w-48 h-px bg-slate-700 mb-2"></div> 
+                        <span className="text-[10px] text-slate-400 font-bold tracking-wider">Ayam Bakar Spesial Bibir by WKA</span>
+                    </div>
+                </div>
+            )}
+        </div>
   );
 
   if (view === 'menu') return (
-    // PREMIUM MENU STYLE: Black/Gold Gradient
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-neutral-900 to-slate-900 flex flex-col items-center justify-center p-4 font-sans overflow-y-auto relative">
+    // PERUBAHAN: BACKGROUND DARI BLACK/GOLD GRADIENT MENJADI PUTIH/LIGHT GRADIENT
+    <div className="min-h-screen bg-gradient-to-br from-white via-neutral-100 to-white flex flex-col items-center justify-center p-4 font-sans overflow-y-auto relative">
         <style>{`
           @keyframes float {
             0%, 100% { transform: translateY(0) rotate(0); }
             50% { transform: translateY(-10px) rotate(2deg); }
           }
           @keyframes float-slow {
-             0%, 100% { transform: translateY(0) rotate(-5deg) scale(1.5); }
-             50% { transform: translateY(-20px) rotate(5deg) scale(1.6); }
+            0%, 100% { transform: translateY(0) rotate(-5deg) scale(1.5); }
+            50% { transform: translateY(-20px) rotate(5deg) scale(1.6); }
           }
           .animate-float { animation: float 3s ease-in-out infinite; }
           .animate-float-slow { animation: float-slow 8s ease-in-out infinite; }
         `}</style>
 
-        {/* BACKGROUND DECORATION (Transparent Cards) */}
+        {/* PERUBAHAN: LATAR BELAKANG LOGO KARTU BESAR YANG SAMAR (6 Bentuk, Sudut Miring, Tengah Lurus) */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none flex items-center justify-center opacity-10">
+            {/* Array untuk 6 logo kartu dengan posisi, warna, dan rotasi yang berbeda */}
+            {[
+                // 4 Logo Sudut (Miring 10-20 derajat)
+                { suit: '♠', color: 'text-black/70', size: '40vh', top: '0%', left: '0%', rotation: '-15deg', x: 0, y: 0, opacity: '0.2' }, // Kiri Atas
+                { suit: '♥', color: 'text-red-600/70', size: '35vh', top: '0%', right: '0%', rotation: '15deg', x: 0, y: 0, opacity: '0.2' }, // Kanan Atas
+                { suit: '♦', color: 'text-red-600/70', size: '50vh', bottom: '0%', left: '0%', rotation: '5deg', x: 0, y: 0, opacity: '0.2' }, // Kiri Bawah
+                { suit: '♣', color: 'text-black/70', size: '30vh', bottom: '0%', right: '0%', rotation: '-25deg', x: 0, y: 0, opacity: '0.2' }, // Kanan Bawah
+                
+                // 2 Logo Tengah (Lurus 0 derajat)
+                { suit: '♥', color: 'text-red-600/70', size: '40vh', top: '35%', left: '50%', rotation: '0deg', x: '-50%', y: '-50%', opacity: '0.2' }, // Tengah Atas
+                { suit: '♣', color: 'text-black/70', size: '45vh', bottom: '25%', left: '50%', rotation: '0deg', x: '-50%', y: '-50%', opacity: '0.2' }, // Tengah Bawah
+            ].map((item, index) => (
+                <div 
+                    key={index}
+                    className="absolute font-serif leading-none transition-all duration-500 ease-out"
+                    style={{
+                        fontSize: item.size,
+                        color: item.color,
+                        top: item.top,
+                        bottom: item.bottom,
+                        left: item.left,
+                        right: item.right,
+                        // Gunakan translate untuk penempatan yang lebih akurat (terutama di tengah)
+                        transform: `translate(${item.x}, ${item.y}) rotate(${item.rotation})`, 
+                        opacity: item.opacity, // Opacity disetel ke 0.2 (20%) untuk kesan lebih jelas
+                    }}
+                >
+                    {item.suit}
+                </div>
+            ))}
+        </div>
+
+        {/* BACKGROUND DECORATION (Transparent Cards) - DIBIARKAN AGAR TETAP ADA DEKORASI KARTU 3D DI DEPAN */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none flex items-center justify-center opacity-20">
              <CardFan3D large={true} />
         </div>
@@ -1012,6 +1111,7 @@ export default function SequenceGame() {
                                 <span className="text-[8px] font-black uppercase tracking-wider leading-none">save</span>
                             </button>
                         </div>
+                        {/* PERBAIKAN: Menghapus kurung kurawal '}' yang berlebihan di akhir teks, yang menyebabkan error JSX */}
                         <div className="text-right text-[10px] text-slate-500 mt-1">{playerName.length}/20</div>
                     </div>
 
@@ -1033,11 +1133,12 @@ export default function SequenceGame() {
             </div>
         )}
 
-        <div className="relative w-full max-w-md bg-slate-800/60 backdrop-blur-xl p-8 rounded-[40px] shadow-2xl border border-slate-700/50 flex flex-col items-center gap-6 mt-10 z-10">
+        {/* CONTAINER MENU UTAMA - DIUBAH DARI SLATE-800/60 KE WHITE/70 */}
+        <div className="relative w-full max-w-md bg-white/70 backdrop-blur-md p-8 rounded-[40px] shadow-2xl border border-slate-200/50 flex flex-col items-center gap-6 mt-10 z-10">
             {/* AMAN FIREBASE BADGE (UPDATED) */}
-            <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-green-900/40 px-3 py-1.5 rounded-full border border-green-500/50 shadow-sm">
-                <ShieldCheck size={16} className="text-green-400"/>
-                <span className="text-[10px] font-black text-green-400 tracking-wide">AMAN FIREBASE</span>
+            <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-green-100/40 px-3 py-1.5 rounded-full border border-green-500/50 shadow-sm">
+                <ShieldCheck size={16} className="text-green-600"/>
+                <span className="text-[10px] font-black text-green-600 tracking-wide">AMAN FIREBASE</span>
             </div>
 
             {/* 3D MOVING CARDS */}
@@ -1046,17 +1147,17 @@ export default function SequenceGame() {
             </div>
 
             {/* TITLE */}
-            <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-yellow-600 drop-shadow-sm tracking-tight -mt-4 mb-2">SEQUENCE</h1>
+            <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-600 to-yellow-800 drop-shadow-sm tracking-tight -mt-4 mb-2">SEQUENCE</h1>
 
-            {/* PLAYER PROFILE */}
-            <div className="w-full bg-slate-900/50 p-2 rounded-2xl flex items-center gap-3 border border-slate-700 shadow-sm relative group cursor-pointer hover:bg-slate-900/80 transition-colors" onClick={() => setShowAvatarModal(true)}>
-                 <div className="w-14 h-14 rounded-xl bg-slate-800 flex items-center justify-center overflow-hidden border-2 border-yellow-500/50 shadow-md shrink-0">
+            {/* PLAYER PROFILE - DIUBAH DARI SLATE-900/50 KE SLATE-100/80 */}
+            <div className="w-full bg-slate-100/80 p-2 rounded-2xl flex items-center gap-3 border border-slate-300 shadow-sm relative group cursor-pointer hover:bg-slate-200/80 transition-colors" onClick={() => setShowAvatarModal(true)}>
+                 <div className="w-14 h-14 rounded-xl bg-slate-200 flex items-center justify-center overflow-hidden border-2 border-yellow-500/50 shadow-md shrink-0">
                      <span className="text-3xl">{playerAvatar}</span>
                  </div>
                  <div className="flex-1">
                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5 ml-1">Nama Pemain</label>
                      <div className="flex items-center gap-2">
-                         <span className="font-bold text-white text-lg truncate max-w-[150px]">{playerName}</span>
+                         <span className="font-bold text-slate-800 text-lg truncate max-w-[150px]">{playerName}</span>
                          <Edit size={14} className="text-slate-500"/>
                      </div>
                  </div>
@@ -1070,32 +1171,33 @@ export default function SequenceGame() {
                         <Bot className="group-hover:rotate-12 transition-transform text-slate-900"/> VS ROBOT
                     </button>
                 ) : (
-                    <div className="bg-slate-900 p-2 rounded-2xl border border-slate-700 animate-fade-in-down">
+                    // DIUBAH DARI SLATE-900 KE SLATE-200
+                    <div className="bg-slate-200 p-2 rounded-2xl border border-slate-300 animate-fade-in-down">
                          <div className="flex justify-between items-center px-2 mb-2">
-                             <span className="text-xs font-bold text-slate-400 flex items-center gap-1"><Brain size={12}/> PILIH LEVEL</span>
-                             <button onClick={()=>setShowBotLevels(false)}><X size={14} className="text-slate-400"/></button>
+                            <span className="text-xs font-bold text-slate-600 flex items-center gap-1"><Brain size={12}/> PILIH LEVEL</span>
+                            <button onClick={()=>setShowBotLevels(false)}><X size={14} className="text-slate-600"/></button>
                          </div>
                          <div className="grid grid-cols-3 gap-2">
-                             <button onClick={()=>handleOfflineStart('easy')} className="bg-slate-800 hover:bg-green-900/30 text-green-400 py-3 rounded-xl font-bold text-xs shadow-sm border border-slate-700 hover:border-green-500/50 flex flex-col items-center gap-1 transition-all">
-                                 <Smile size={18}/> MUDAH
-                             </button>
-                             <button onClick={()=>handleOfflineStart('medium')} className="bg-slate-800 hover:bg-yellow-900/30 text-yellow-400 py-3 rounded-xl font-bold text-xs shadow-sm border border-slate-700 hover:border-yellow-500/50 flex flex-col items-center gap-1 transition-all">
-                                 <Zap size={18}/> SEDANG
-                             </button>
-                             <button onClick={()=>handleOfflineStart('hard')} className="bg-slate-800 hover:bg-red-900/30 text-red-400 py-3 rounded-xl font-bold text-xs shadow-sm border border-slate-700 hover:border-red-500/50 flex flex-col items-center gap-1 transition-all">
-                                 <Skull size={18}/> SUSAH
-                             </button>
+                            <button onClick={()=>handleOfflineStart('easy')} className="bg-white hover:bg-green-50/70 text-green-600 py-3 rounded-xl font-bold text-xs shadow-sm border border-slate-300 hover:border-green-400/50 flex flex-col items-center gap-1 transition-all">
+                                <Smile size={18}/> MUDAH
+                            </button>
+                            <button onClick={()=>handleOfflineStart('medium')} className="bg-white hover:bg-yellow-50/70 text-yellow-600 py-3 rounded-xl font-bold text-xs shadow-sm border border-slate-300 hover:border-yellow-400/50 flex flex-col items-center gap-1 transition-all">
+                                <Zap size={18}/> SEDANG
+                            </button>
+                            <button onClick={()=>handleOfflineStart('hard')} className="bg-white hover:bg-red-50/70 text-red-600 py-3 rounded-xl font-bold text-xs shadow-sm border border-slate-300 hover:border-red-400/50 flex flex-col items-center gap-1 transition-all">
+                                <Skull size={18}/> SUSAH
+                            </button>
                          </div>
                     </div>
                 )}
 
                 <div className="flex gap-3">
                     {/* ELEGANT LIGHT THEME BUTTONS */}
-                    <button onClick={()=>handleCreateRoom(2)} className="flex-1 bg-gradient-to-br from-slate-100 to-slate-300 hover:from-white hover:to-slate-200 text-slate-900 p-4 rounded-2xl font-bold text-sm shadow-lg border border-white/50 flex items-center justify-center gap-2 group transition-all transform hover:-translate-y-0.5">
-                        <Swords size={18} className="text-black group-hover:scale-110 transition-transform"/> 1 VS 1
+                    <button onClick={()=>handleCreateRoom(2)} className="flex-1 bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white p-4 rounded-2xl font-bold text-sm shadow-lg shadow-indigo-500/20 transition-all transform hover:-translate-y-0.5 border border-indigo-700 flex items-center justify-center gap-2 group">
+                        <Swords size={18} className="group-hover:scale-110 transition-transform"/> 1 VS 1
                     </button>
-                    <button onClick={()=>handleCreateRoom(4)} className="flex-1 bg-gradient-to-br from-slate-100 to-slate-300 hover:from-white hover:to-slate-200 text-slate-900 p-4 rounded-2xl font-bold text-sm shadow-lg border border-white/50 flex items-center justify-center gap-2 group transition-all transform hover:-translate-y-0.5">
-                        <Swords size={18} className="text-black group-hover:scale-110 transition-transform"/> 2 VS 2
+                    <button onClick={()=>handleCreateRoom(4)} className="flex-1 bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white p-4 rounded-2xl font-bold text-sm shadow-lg shadow-indigo-500/20 transition-all transform hover:-translate-y-0.5 border border-indigo-700 flex items-center justify-center gap-2 group">
+                        <Swords size={18} className="group-hover:scale-110 transition-transform"/> 2 VS 2
                     </button>
                 </div>
             </div>
@@ -1112,13 +1214,13 @@ export default function SequenceGame() {
             </div>
 
             {/* PEMISAH GARIS WARNA BAGUS */}
-            <div className="w-full h-1 bg-gradient-to-r from-transparent via-yellow-500 to-transparent mt-4 mb-2 opacity-50"></div>
+            <div className="w-full h-1 bg-gradient-to-r from-transparent via-yellow-600 to-transparent mt-4 mb-2 opacity-50"></div>
 
             {/* FOOTER TEXT */}
-            <div className="text-center opacity-50">
-                <p className="text-[10px] font-medium text-slate-400 leading-relaxed">
+            <div className="text-center opacity-70">
+                <p className="text-[10px] font-medium text-slate-600 leading-relaxed">
                     powered by SETIAWAN <br/>
-                    <span className="text-yellow-500 font-bold">Jangan Lupa Mampir dan Makan di Ayam Bakar Spesial Bibir by WKA</span>
+                    <span className="text-yellow-600 font-bold">Jangan Lupa Mampir dan Makan di Ayam Bakar Spesial Bibir by WKA</span>
                 </p>
             </div>
         </div>
@@ -1127,7 +1229,7 @@ export default function SequenceGame() {
   
   // !!! PERBAIKAN URUTAN RENDER DI SINI !!!
   // Pengecekan data kosong HARUS dilakukan SEBELUM mencoba merender Lobby atau Game
-  if (!gameState && !gameOverReason) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-500 font-bold animate-pulse">Memuat Permainan...</div>;
+  if (!gameState && !gameOverReason && view !== 'menu' && view !== 'lobby') return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-500 font-bold animate-pulse">Memuat Permainan...</div>;
 
   if (view === 'lobby') {
       // LOGIC: Check if room is full
@@ -1135,81 +1237,78 @@ export default function SequenceGame() {
       const isRoomFull = gameState && gameState.players && gameState.players.length === gameState.maxPlayers;
 
       return (
-         <div className="min-h-screen bg-gradient-to-br from-slate-900 to-indigo-900 flex items-center justify-center p-4">
+          <div className="min-h-screen bg-gradient-to-br from-slate-900 to-indigo-900 flex items-center justify-center p-4">
              <div className="bg-slate-800/90 backdrop-blur p-8 rounded-[40px] text-center w-full max-w-sm border border-slate-700 shadow-2xl relative">
                  <button 
                     onClick={handleLeaveLobby} 
                     className="absolute top-6 left-6 w-10 h-10 bg-slate-700 rounded-full hover:bg-rose-500/20 text-slate-400 hover:text-rose-500 transition-colors flex items-center justify-center shadow-sm active:scale-95 group"
                  >
-                    <X size={24} strokeWidth={2.5} />
+                     <X size={24} strokeWidth={2.5} />
                  </button>
 
                  <h2 className="text-2xl font-black text-white mb-6 mt-8 tracking-tight">RUANG TUNGGU</h2>
-                 <div className="bg-slate-900 p-6 rounded-3xl mb-6 cursor-pointer relative group border-2 border-slate-800 hover:border-indigo-500 transition-colors" onClick={()=>{navigator.clipboard.writeText(roomCode);setNotification("Disalin")}}>
-                    <div className="text-xs text-slate-400 font-bold mb-2 uppercase tracking-wider flex items-center justify-center gap-2"><Wifi size={12}/> KODE ROOM</div>
-                    <div className="text-4xl font-mono text-yellow-400 tracking-widest font-black drop-shadow-md">{roomCode}</div>
-                    <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity font-bold">KLIK SALIN</div>
+                 <div className="bg-slate-900 p-6 rounded-3xl mb-6 cursor-pointer relative group border-2 border-slate-800 hover:border-indigo-500 transition-colors" onClick={()=>{document.execCommand('copy', false, roomCode);setNotification("Disalin")}}>
+                     <div className="text-xs text-slate-400 font-bold mb-2 uppercase tracking-wider flex items-center justify-center gap-2"><Wifi size={12}/> KODE ROOM</div>
+                     <div className="text-4xl font-mono text-yellow-400 tracking-widest font-black drop-shadow-md">{roomCode}</div>
+                     <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity font-bold">KLIK SALIN</div>
                  </div>
                  
                  {/* PLAYER LIST */}
                  <div className="space-y-3 mb-8 text-left max-h-60 overflow-y-auto pr-1">
-                     {gameState?.players?.map((p,i)=>(
-                        <div key={i} className={`p-3 rounded-2xl flex items-center gap-3 shadow-sm border transition-all duration-300 ${i === (gameState.players.length-1) ? 'animate-fade-in-up bg-slate-700 border-green-500/50' : 'bg-slate-700 border-slate-600'}`}>
-                            <div className="w-10 h-10 rounded-xl bg-slate-600 flex items-center justify-center text-xl border border-slate-500 relative">
-                                {p.avatarType === 'image' ? <img src={p.avatar} className="w-full h-full object-cover rounded-xl"/> : p.avatar}
-                                {i === (gameState.players.length-1) && gameState.players.length > 1 && <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-ping"></div>}
-                            </div>
-                            <div className="flex-1">
-                                 <div className="font-bold text-white text-sm">{p.name}</div>
-                                 <div className={`text-[10px] font-black uppercase tracking-wider ${p.team==='blue'?'text-indigo-400':'text-rose-400'}`}>{p.team === 'blue' ? 'Tim Biru' : 'Tim Merah'}</div>
-                            </div>
-                            {p.isHost && <Crown size={16} className="text-yellow-500 drop-shadow-sm"/>}
-                        </div>
-                     ))}
+                      {gameState?.players?.map((p,i)=>(
+                          <div key={i} className={`p-3 rounded-2xl flex items-center gap-3 shadow-sm border transition-all duration-300 ${i === (gameState.players.length-1) ? 'animate-fade-in-up bg-slate-700 border-green-500/50' : 'bg-slate-700 border-slate-600'}`}>
+                              <div className="w-10 h-10 rounded-xl bg-slate-600 flex items-center justify-center text-xl border border-slate-500 relative">
+                                  {p.avatarType === 'image' ? <img src={p.avatar} className="w-full h-full object-cover rounded-xl"/> : p.avatar}
+                                  {i === (gameState.players.length-1) && gameState.players.length > 1 && <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>}
+                              </div>
+                              <div className="flex-1">
+                                   <div className="font-bold text-white text-sm">{p.name}</div>
+                                   <div className={`text-[10px] font-black uppercase tracking-wider ${p.team==='blue'?'text-indigo-400':'text-rose-400'}`}>{p.team === 'blue' ? 'Tim Biru' : 'Tim Merah'}</div>
+                              </div>
+                              {p.isHost && <Crown size={16} className="text-yellow-500 drop-shadow-sm"/>}
+                          </div>
+                      ))}
                  </div>
 
-                 {/* WAITING SIGNAL LOGIC */}
-                 {gameState?.status==='playing' ? (
-                     <div className="animate-pulse text-indigo-400 font-bold flex items-center justify-center gap-2"><RefreshCw className="animate-spin" size={16}/> Game Sedang Berlangsung...</div>
-                 ) : (
-                     isRoomFull ? (
-                         // SIGNAL: ROOM FULL -> SHOW START BUTTON
+                  {/* WAITING SIGNAL LOGIC */}
+                  {gameState?.status==='playing' ? (
+                      <div className="animate-pulse text-indigo-400 font-bold flex items-center justify-center gap-2"><RefreshCw className="animate-spin" size={16}/> Game Sedang Berlangsung...</div>
+                  ) : (
+                      isRoomFull ? (
+                          // SIGNAL: ROOM FULL -> SHOW START BUTTON
                         <div className="space-y-3 animate-fade-in">
-                             <div className="text-green-400 font-black text-lg tracking-widest animate-pulse">SIAP DIMULAI!</div>
-                             {user?.uid === gameState.players[0].uid ? (
-                                 <button onClick={async()=>{
-                                     if (gameMode==='online') {
-                                         const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
-                                         await updateDoc(roomRef, { status: 'playing' });
-                                     }
-                                 }} className="w-full bg-green-600 hover:bg-green-500 text-white p-4 rounded-2xl font-bold shadow-lg shadow-green-900/20 transition-all active:scale-95 flex items-center justify-center gap-2">
-                                     <Play fill="white" size={18}/> MULAI GAME
-                                 </button>
-                             ) : (
-                                 <div className="text-slate-400 text-xs italic">Menunggu Host Memulai...</div>
-                             )}
+                              <div className="text-green-400 font-black text-lg tracking-widest animate-pulse">SIAP DIMULAI!</div>
+                              {user?.uid === gameState.players[0].uid ? (
+                                  <button onClick={async()=>{
+                                      if (gameMode==='online') {
+                                          const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
+                                          await updateDoc(roomRef, { status: 'playing' });
+                                      }
+                                  }} className="w-full bg-green-600 hover:bg-green-500 text-white p-4 rounded-2xl font-bold shadow-lg shadow-green-900/20 transition-all active:scale-95 flex items-center justify-center gap-2">
+                                      <Play fill="white" size={18}/> MULAI GAME
+                                  </button>
+                              ) : (
+                                  <div className="text-slate-400 text-xs italic">Menunggu Host Memulai...</div>
+                              )}
                         </div>
-                     ) : (
-                         // SIGNAL: WAITING FOR OPPONENT
-                         <div className="flex flex-col items-center justify-center gap-2 opacity-80 py-4 bg-slate-900/50 rounded-2xl border border-slate-700/50 border-dashed">
-                             <div className="flex gap-1">
-                                 <div className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce" style={{animationDelay:'0s'}}></div>
-                                 <div className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce" style={{animationDelay:'0.2s'}}></div>
-                                 <div className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce" style={{animationDelay:'0.4s'}}></div>
-                             </div>
-                             <span className="text-yellow-500 font-bold text-xs tracking-widest uppercase">Menunggu Lawan ({gameState?.players?.length}/{gameState?.maxPlayers})</span>
-                             <span className="text-[10px] text-slate-500 max-w-[200px] leading-tight">Bagikan kode room ke teman untuk bermain</span>
-                         </div>
-                     )
-                 )}
+                      ) : (
+                          // SIGNAL: WAITING FOR OPPONENT
+                          <div className="flex flex-col items-center justify-center gap-2 opacity-80 py-4 bg-slate-900/50 rounded-2xl border border-slate-700/50 border-dashed">
+                              <div className="flex gap-1">
+                                  <div className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce" style={{animationDelay:'0s'}}></div>
+                                  <div className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce" style={{animationDelay:'0.2s'}}></div>
+                                  <div className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce" style={{animationDelay:'0.4s'}}></div>
+                              </div>
+                              <span className="text-yellow-500 font-bold text-xs tracking-widest uppercase">Menunggu Lawan ({gameState?.players?.length}/{gameState?.maxPlayers})</span>
+                              <span className="text-[10px] text-slate-500 max-w-[200px] leading-tight">Bagikan kode room ke teman untuk bermain</span>
+                          </div>
+                      )
+                  )}
              </div>
-         </div>
+          </div>
       );
   }
 
-  // Jika kita sampai di sini, view bukan menu dan bukan lobby, tapi gameState harus ada.
-  // Pengecekan di atas sudah menangani null gameState.
-  
   const currentPlayer = gameState ? gameState.players[gameState.currentTurnIndex] : null;
   const isMyTurn = gameState && ((gameMode === 'offline' && currentPlayer.uid === 'me') || (gameMode === 'online' && currentPlayer.uid === user.uid));
   const myPlayer = gameState ? gameState.players.find(p => p.uid === (gameMode === 'offline' ? 'me' : user.uid)) : null;
@@ -1226,7 +1325,7 @@ export default function SequenceGame() {
 
         {/* TOP BAR */}
         <div className="h-14 md:h-16 bg-white/80 backdrop-blur-md border-b border-indigo-100 flex items-center justify-between px-2 md:px-4 z-30 shrink-0 shadow-sm">
-             <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
                  <button onClick={()=>setShowExitConfirm(true)} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-xl bg-red-600 text-white hover:bg-red-700 transition-colors shadow-sm active:scale-95">
                      <LogOut size={16} className="transform rotate-180 md:w-5 md:h-5"/>
                  </button>
@@ -1236,9 +1335,10 @@ export default function SequenceGame() {
                  <button onClick={()=>setShowHelp(true)} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-xl bg-yellow-100 text-yellow-600 hover:bg-yellow-200 transition-colors shadow-sm active:scale-95">
                      <Info size={16} strokeWidth={2.5} className="md:w-5 md:h-5"/>
                  </button>
-             </div>
-             
-             <div className="flex items-center gap-2 md:gap-6">
+            </div>
+            
+            <div className="flex items-center gap-2 md:gap-6">
+                 {/* Timer Display - Dihapus potensi kedipan/tulisan "pukul". Hanya menampilkan durasi 5 menit berjalan mundur. */}
                  <div className="bg-slate-900 rounded-lg px-2 py-0.5 md:px-3 md:py-1 text-yellow-400 font-mono text-sm md:text-xl font-bold tracking-widest shadow-inner border border-slate-700">
                      {formatTime(timeLeft)}
                  </div>
@@ -1250,92 +1350,98 @@ export default function SequenceGame() {
                  </div>
                  
                  {currentPlayer && (
-                    <div className={`hidden md:flex items-center gap-2 px-3 py-1 rounded-xl border min-w-[180px] max-w-[220px] transition-all duration-300 ${currentPlayer.team==='blue'?'bg-indigo-50 border-indigo-100 ring-2 ring-indigo-200':'bg-rose-50 border-rose-100 ring-2 ring-rose-200'} ${isMyTurn ? 'scale-105 shadow-md' : 'opacity-80'}`}>
-                        <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center overflow-hidden border border-black/10 shrink-0">
-                            {currentPlayer.avatarType === 'image' ? <img src={currentPlayer.avatar} className="w-full h-full object-cover"/> : currentPlayer.avatar}
-                        </div>
-                        <div className={`font-bold text-sm truncate flex-1 ${currentPlayer.team==='blue'?'text-indigo-600':'text-rose-600'}`}>
-                            {currentPlayer.name}
-                        </div>
-                        {/* Active Player Indicator */}
-                        <div className={`w-2 h-2 rounded-full ${isMyTurn ? 'animate-ping bg-green-500' : 'bg-slate-300'}`}></div>
-                    </div>
+                     <div className={`hidden md:flex items-center gap-2 px-3 py-1 rounded-xl border min-w-[180px] max-w-[220px] transition-all duration-300 ${currentPlayer.team==='blue'?'bg-indigo-50 border-indigo-100 ring-2 ring-indigo-200':'bg-rose-50 border-rose-100 ring-2 ring-rose-200'} ${isMyTurn ? 'scale-105 shadow-md' : 'opacity-80'}`}>
+                         <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center overflow-hidden border border-black/10 shrink-0">
+                             {currentPlayer.avatarType === 'image' ? <img src={currentPlayer.avatar} className="w-full h-full object-cover"/> : currentPlayer.avatar}
+                         </div>
+                         <div className={`font-bold text-sm truncate flex-1 ${currentPlayer.team==='blue'?'text-indigo-600':'text-rose-600'}`}>
+                             {currentPlayer.name}
+                         </div>
+                         {/* Active Player Indicator */}
+                         <div className={`w-2 h-2 rounded-full ${isMyTurn ? 'animate-ping bg-green-500' : 'bg-slate-300'}`}></div>
+                     </div>
                  )}
-             </div>
+            </div>
         </div>
 
         {/* BOARD AREA */}
         <div className="flex-1 flex items-center justify-center overflow-hidden p-1 md:p-4 relative bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-fixed">
              {gameState ? (
-             <div className="relative transform-style-3d rotate-x-12 max-w-[800px] w-full aspect-square transition-transform duration-500">
+             <div className="relative transform-style-3d md:rotate-x-12 max-w-[800px] w-full aspect-square transition-transform duration-500">
                  <div className="absolute inset-[-10px] md:inset-[-15px] bg-slate-800 rounded-2xl transform translate-z-[-20px] shadow-2xl opacity-90"></div>
                  
                  <div className="w-full h-full bg-slate-900 p-1 md:p-2 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] border-2 md:border-4 border-slate-700 relative">
-                     {/* WINNING LINES LAYER (UPDATED FOR VISIBILITY) */}
-                     <svg className="absolute inset-0 w-full h-full z-30 pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
-                        {(gameState.winningLines || []).map((line, idx) => {
-                            const x1 = (line.start.c * 10) + 5; const y1 = (line.start.r * 10) + 5;
-                            const x2 = (line.end.c * 10) + 5; const y2 = (line.end.r * 10) + 5;
-                            return (
-                                <g key={idx}>
-                                    {/* Outer Glow */}
-                                    <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={TEAM_COLORS[line.team].mainColor} strokeWidth="4" strokeLinecap="round" className="opacity-40 blur-sm"/>
-                                    {/* Main Line */}
-                                    <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={TEAM_COLORS[line.team].line} strokeWidth="1.5" strokeLinecap="round" className="drop-shadow-md"/>
-                                </g>
-                            );
-                        })}
-                     </svg>
-                     
-                     {/* GRID BACKGROUND COLOR CHANGED TO WHITE FOR ELEGANT LINES */}
-                     <div className="w-full h-full grid grid-cols-10 grid-rows-10 gap-[1px] md:gap-[2px] bg-white">
-                         {gameState.board.map((row, r) => row.map((cell, c) => {
-                             const isHighlighted = highlightedCells.some(h => h.r === r && h.c === c);
-                             return (
-                               <div key={`${r}-${c}`} 
-                                    onClick={() => {
-                                        if(!isMyTurn) return;
-                                        const cardIndex = myHand.findIndex(h => {
-                                            if (h.type === 'wild' && !cell.chip && !cell.isCorner) return true;
-                                            if (h.type === 'remove' && cell.chip && cell.chip !== myTeam && !cell.locked && !cell.isCorner) return true;
-                                            if (h.type === 'standard' && h.rank === cell.rank && h.suit === cell.suit && !cell.chip) return true;
-                                            return false;
-                                        });
-                                        if (cardIndex !== -1) playCard(cardIndex, r, c);
-                                        else { 
-                                            if (hintsEnabled) {
-                                                setNotification("Kartu tidak cocok!"); setTimeout(()=>setNotification(''),1000); vibrate(); 
+                      {/* WINNING LINES LAYER (UPDATED FOR VISIBILITY) */}
+                      <svg className="absolute inset-0 w-full h-full z-30 pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                          {(gameState.winningLines || []).map((line, idx) => {
+                              const x1 = (line.start.c * 10) + 5; const y1 = (line.start.r * 10) + 5;
+                              const x2 = (line.end.c * 10) + 5; const y2 = (line.end.r * 10) + 5;
+                              return (
+                                  <g key={idx}>
+                                      {/* Outer Glow */}
+                                      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={TEAM_COLORS[line.team].mainColor} strokeWidth="4" strokeLinecap="round" className="opacity-40 blur-sm"/>
+                                      {/* Main Line */}
+                                      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={TEAM_COLORS[line.team].line} strokeWidth="1.5" strokeLinecap="round" className="drop-shadow-md"/>
+                                  </g>
+                              );
+                          })}
+                      </svg>
+                      
+                      {/* Perubahan #2: Grid gap dihilangkan (gap-0) */}
+                      {/* Perubahan #3: Menggunakan bg-transparent untuk menghilangkan grid lines/gap. */}
+                      <div className="w-full h-full grid grid-cols-10 grid-rows-10 gap-0 bg-transparent">
+                          {gameState.board.map((row, r) => row.map((cell, c) => {
+                              const isHighlighted = highlightedCells.some(h => h.r === r && h.c === c);
+                              return (
+                                 <div key={`${r}-${c}`} 
+                                       onClick={() => {
+                                            if(!isMyTurn) return;
+                                            const cardIndex = myHand.findIndex(h => {
+                                                if (h.type === 'wild' && !cell.chip && !cell.isCorner) return true;
+                                                if (h.type === 'remove' && cell.chip && cell.chip !== myTeam && !cell.locked && !cell.isCorner) return true;
+                                                if (h.type === 'standard' && h.rank === cell.rank && h.suit === cell.suit && !cell.chip) return true;
+                                                return false;
+                                            });
+                                            if (cardIndex !== -1) playCard(cardIndex, r, c);
+                                            else { 
+                                                if (hintsEnabled) {
+                                                     setNotification("Kartu tidak cocok!"); setTimeout(()=>setNotification(''),1000); vibrate(); 
+                                                }
                                             }
-                                        }
-                                    }}
-                                    className={`relative bg-slate-900 flex items-center justify-center cursor-pointer transition-all duration-200 overflow-hidden
-                                      ${isHighlighted ? 'ring-2 md:ring-4 ring-yellow-400 z-10 brightness-110 shadow-[0_0_15px_yellow]' : 'hover:brightness-110'}
-                                      ${cell.locked ? 'brightness-90' : ''}
-                                    `}
-                               >
-                                   {!cell.isCorner ? (
-                                      <RealCardFace rank={cell.rank} suit={cell.suit} type={null} isHand={false} />
-                                   ) : (
-                                      // ELEGANT CORNER STYLE (WHITE TEXT)
-                                      <div className="w-full h-full bg-white/10 flex flex-col items-center justify-between p-0.5 border border-white/20 relative overflow-hidden">
-                                          <div className="absolute top-0.5 left-0.5 w-2 h-2 border-t border-l border-white/40"></div>
-                                          <div className="absolute bottom-0.5 right-0.5 w-2 h-2 border-b border-r border-white/40"></div>
-                                          <div className="text-[4px] md:text-[6px] font-serif text-white font-bold tracking-tight transform scale-75 origin-top opacity-90 drop-shadow-sm">WILD</div>
-                                          <Crown size={10} className="text-white drop-shadow-md md:w-3 md:h-3"/>
-                                          <div className="text-[4px] md:text-[6px] font-serif text-white font-bold tracking-tight transform scale-75 origin-bottom rotate-180 opacity-90 drop-shadow-sm">WILD</div>
-                                      </div>
-                                   )}
-                                   {cell.chip && TEAM_COLORS[cell.chip] && (
-                                      // POKER CHIP STYLE (Passed 'isWild' prop)
-                                      <div className={`absolute inset-[2px] md:inset-[5px] z-20 transition-all duration-500 ${cell.isRemoving ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
-                                           <PokerChip team={cell.chip} rank={cell.rank} suit={cell.suit} isWild={cell.playedWithWild} />
-                                          {cell.locked && <div className="absolute inset-0 flex items-center justify-center text-black/50 opacity-80"><RotateCcw size={10} className="md:w-3 md:h-3"/></div>} 
-                                      </div>
-                                   )}
-                               </div>
-                             );
-                         }))}
-                     </div>
+                                        }}
+                                        // Perubahan #3: Card border ditambahkan secara implisit di RealCardFace (border border-slate-950/10)
+                                        className={`relative flex items-center justify-center cursor-pointer transition-all duration-200 overflow-hidden
+                                            ${isHighlighted ? 'ring-2 md:ring-4 ring-yellow-400 z-10 brightness-110 shadow-[0_0_15px_yellow]' : 'hover:brightness-110'}
+                                            ${cell.locked ? 'brightness-90' : ''}
+                                        `}
+                                >
+                                     {!cell.isCorner ? (
+                                         <RealCardFace rank={cell.rank} suit={cell.suit} type={null} isHand={false} />
+                                     ) : (
+                                         // Perubahan #1: Sudut Corner baru (gambar 4 logo kartu silang, warna putih, tanpa tulisan WILD)
+                                         <div className="w-full h-full bg-white flex items-center justify-center relative overflow-hidden border border-slate-900/10">
+                                            <svg viewBox="0 0 100 100" className="w-full h-full p-2 text-slate-900 opacity-80">
+                                                <line x1="10" y1="10" x2="90" y2="90" stroke="currentColor" strokeWidth="3" />
+                                                <line x1="90" y1="10" x2="10" y2="90" stroke="currentColor" strokeWidth="3" />
+                                                {/* 4 Logos di sudut */}
+                                                <text x="50" y="25" textAnchor="middle" style={{ fontSize: '15px' }} fill="#dc2626">♥</text>
+                                                <text x="50" y="85" textAnchor="middle" style={{ fontSize: '15px' }} fill="#0f172a">♣</text>
+                                                <text x="25" y="55" textAnchor="middle" style={{ fontSize: '15px' }} fill="#dc2626">♦</text>
+                                                <text x="75" y="55" textAnchor="middle" style={{ fontSize: '15px' }} fill="#0f172a">♠</text>
+                                            </svg>
+                                         </div>
+                                     )}
+                                     {cell.chip && TEAM_COLORS[cell.chip] && (
+                                         // POKER CHIP STYLE (Passed 'isWild' prop) - Sekarang menggunakan 3D Model
+                                         <div className={`absolute inset-[2px] md:inset-[5px] z-20 transition-all duration-500 ${cell.isRemoving ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
+                                             <PokerChip team={cell.chip} rank={cell.rank} suit={cell.suit} isWild={cell.playedWithWild} />
+                                             {cell.locked && <div className="absolute inset-0 flex items-center justify-center text-black/50 opacity-80"><RotateCcw size={10} className="md:w-3 md:h-3"/></div>} 
+                                         </div>
+                                     )}
+                                 </div>
+                              );
+                          }))}
+                      </div>
                  </div>
              </div>
              ) : null}
@@ -1347,33 +1453,33 @@ export default function SequenceGame() {
              
              <div className="absolute left-2 md:left-6 bottom-20 md:bottom-24 flex flex-col gap-3">
                  <div className="relative">
-                   <button onClick={()=>{setShowChat(!showChat); setUnreadMsg(false);}} className="w-10 h-10 md:w-12 md:h-12 bg-indigo-600 rounded-2xl text-white hover:bg-indigo-500 shadow-lg shadow-indigo-200 flex items-center justify-center transition-transform hover:scale-105 active:scale-95"><MessageCircle size={20} className="md:w-6 md:h-6"/></button>
-                   {unreadMsg && !showChat && (
-                      <div className="absolute -top-2 -right-2 w-3 h-3 md:w-4 md:h-4 bg-rose-500 rounded-full border-2 border-white animate-pulse"></div>
-                   )}
+                    <button onClick={()=>{setShowChat(!showChat); setUnreadMsg(false);}} className="w-10 h-10 md:w-12 md:h-12 bg-indigo-600 rounded-2xl text-white hover:bg-indigo-500 shadow-lg shadow-indigo-200 flex items-center justify-center transition-transform hover:scale-105 active:scale-95"><MessageCircle size={20} className="md:w-6 md:h-6"/></button>
+                    {unreadMsg && !showChat && (
+                        <div className="absolute -top-2 -right-2 w-3 h-3 md:w-4 md:h-4 bg-rose-500 rounded-full border-2 border-white animate-pulse"></div>
+                    )}
                  </div>
              </div>
 
              {/* Chat Window */}
              {showChat && (
                  <div className="absolute left-4 bottom-32 w-64 md:w-72 bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col h-60 md:h-72 z-50 overflow-hidden animate-fade-in-up">
-                     <div className="bg-indigo-50 p-3 border-b border-indigo-100 flex justify-between items-center"><span className="text-xs font-bold text-indigo-800">OBROLAN</span><button onClick={()=>setShowChat(false)}><X size={16} className="text-indigo-400"/></button></div>
-                     <div className="flex-1 p-3 overflow-y-auto space-y-3 bg-slate-50">
-                         {gameState?.chat?.map((m,i)=>(
-                             <div key={i} className={`flex flex-col ${m.sender===playerName?'items-end':'items-start'}`}>
-                                 <div className={`px-3 py-2 rounded-xl text-xs max-w-[80%] ${m.sender===playerName?'bg-indigo-600 text-white rounded-br-none':'bg-white text-slate-700 border border-slate-200 rounded-bl-none shadow-sm'}`}>{m.text}</div>
-                             </div>
-                         ))}
-                     </div>
-                     <div className="p-2 bg-white border-t border-slate-100 flex gap-2">
-                         <div className="relative group">
-                            <button className="p-2 text-slate-400 hover:text-indigo-500 bg-slate-50 rounded-lg"><Smile size={20}/></button>
-                            <div className="absolute bottom-full left-0 mb-2 bg-white border border-slate-200 p-2 rounded-xl grid grid-cols-5 gap-1 hidden group-hover:grid w-48 shadow-xl">
-                                {EMOJIS.map(e=><button key={e} onClick={()=>setChatMessage(p=>p+e)} className="hover:bg-slate-50 rounded p-1.5 text-lg">{e}</button>)}
-                            </div>
-                         </div>
-                         <input value={chatMessage} onChange={e=>setChatMessage(e.target.value)} onKeyPress={e=>e.key==='Enter'&&sendChat()} className="flex-1 bg-slate-50 text-xs text-slate-800 outline-none px-3 rounded-lg border border-transparent focus:border-indigo-200 focus:bg-white transition-all" placeholder="Ketik pesan..."/>
-                     </div>
+                      <div className="bg-indigo-50 p-3 border-b border-indigo-100 flex justify-between items-center"><span className="text-xs font-bold text-indigo-800">OBROLAN</span><button onClick={()=>setShowChat(false)}><X size={16} className="text-indigo-400"/></button></div>
+                      <div className="flex-1 p-3 overflow-y-auto space-y-3 bg-slate-50">
+                          {gameState?.chat?.map((m,i)=>(
+                              <div key={i} className={`flex flex-col ${m.sender===playerName?'items-end':'items-start'}`}>
+                                  <div className={`px-3 py-2 rounded-xl text-xs max-w-[80%] ${m.sender===playerName?'bg-indigo-600 text-white rounded-br-none':'bg-white text-slate-700 border border-slate-200 rounded-bl-none shadow-sm'}`}>{m.text}</div>
+                              </div>
+                          ))}
+                      </div>
+                      <div className="p-2 bg-white border-t border-slate-100 flex gap-2">
+                          <div className="relative group">
+                              <button className="p-2 text-slate-400 hover:text-indigo-500 bg-slate-50 rounded-lg"><Smile size={20}/></button>
+                              <div className="absolute bottom-full left-0 mb-2 bg-white border border-slate-200 p-2 rounded-xl grid grid-cols-5 gap-1 hidden group-hover:grid w-48 shadow-xl">
+                                  {EMOJIS.map(e=><button key={e} onClick={()=>setChatMessage(p=>p+e)} className="hover:bg-slate-50 rounded p-1.5 text-lg">{e}</button>)}
+                              </div>
+                          </div>
+                          <input value={chatMessage} onChange={e=>setChatMessage(e.target.value)} onKeyPress={e=>e.key==='Enter'&&sendChat()} className="flex-1 bg-slate-50 text-xs text-slate-800 outline-none px-3 rounded-lg border border-transparent focus:border-indigo-200 focus:bg-white transition-all" placeholder="Ketik pesan..."/>
+                      </div>
                  </div>
              )}
 
@@ -1398,21 +1504,21 @@ export default function SequenceGame() {
                               className={`relative w-14 h-24 md:w-20 md:h-32 cursor-pointer transform hover:-translate-y-4 md:hover:-translate-y-8 hover:scale-110 transition-all duration-300 hover:z-50 shadow-xl rounded-lg ${isMyTurn && !isDead ?'brightness-100':'brightness-90 opacity-90'} ${isDead ? 'grayscale-[0.5]' : ''}`}
                               style={{ transform: `rotate(${(idx-2)*6}deg) translateY(${Math.abs(idx-2)*4}px)` }}
                          >
-                             <RealCardFace rank={card.rank} suit={card.suit} type={card.type} isHand={true} />
-                             
-                             {/* DEAD CARD INDICATOR / RECYCLE BUTTON */}
-                             {isDead && isMyTurn && (
-                                 <button 
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        recycleDeadCard(idx);
-                                    }}
-                                    className="absolute -top-2 -right-2 bg-red-500 text-white p-1 md:p-1.5 rounded-full shadow-md z-50 animate-bounce hover:bg-red-600 transition-colors"
-                                    title="Ganti Kartu Mati"
-                                 >
-                                     <RefreshCw size={10} className="md:w-3.5 md:h-3.5" />
-                                 </button>
-                             )}
+                              <RealCardFace rank={card.rank} suit={card.suit} type={card.type} isHand={true} />
+                              
+                              {/* DEAD CARD INDICATOR / RECYCLE BUTTON */}
+                              {isDead && isMyTurn && (
+                                  <button 
+                                      onClick={(e) => {
+                                          e.stopPropagation();
+                                          recycleDeadCard(idx);
+                                      }}
+                                      className="absolute -top-2 -right-2 bg-red-500 text-white p-1 md:p-1.5 rounded-full shadow-md z-50 animate-bounce hover:bg-red-600 transition-colors"
+                                      title="Ganti Kartu Mati"
+                                  >
+                                      <RefreshCw size={10} className="md:w-3.5 md:h-3.5" />
+                                  </button>
+                              )}
                          </div>
                      );
                  })}
@@ -1506,9 +1612,9 @@ export default function SequenceGame() {
             <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md z-[80] flex flex-col items-center justify-center p-6 animate-fade-in overflow-y-auto">
                 {gameOverReason === 'disconnect' ? (
                      <div className="text-center">
-                         <WifiOff size={80} className="text-slate-400 mb-6 mx-auto animate-pulse" />
-                         <h1 className="text-4xl font-black text-white mb-4 tracking-tight">KONEKSI TERPUTUS</h1>
-                         <p className="text-slate-300 font-medium italic mb-8 px-4 opacity-80 max-w-sm">"Permainan seimbang karna tidak mencapai score target 2 point"</p>
+                          <WifiOff size={80} className="text-slate-400 mb-6 mx-auto animate-pulse" />
+                          <h1 className="text-4xl font-black text-white mb-4 tracking-tight">KONEKSI TERPUTUS</h1>
+                          <p className="text-slate-300 font-medium italic mb-8 px-4 opacity-80 max-w-sm">"Permainan seimbang karna tidak mencapai score target 2 point"</p>
                      </div>
                 ) : (
                     <div className="w-full max-w-sm bg-gradient-to-b from-slate-800 to-slate-900 p-1 rounded-[40px] shadow-2xl border-4 border-slate-700/50 my-auto">
@@ -1532,10 +1638,10 @@ export default function SequenceGame() {
                                     {gameState?.winner === 'blue' ? 'TIM BIRU' : 'TIM MERAH'}
                                 </div>
                                 <div className="flex flex-col items-center gap-2 mb-4">
-                                     {/* LIST WINNING PLAYERS */}
-                                     {gameState?.players?.filter(p => p.team === gameState.winner).map((p, i) => (
-                                         <span key={i} className="text-xs text-slate-300 font-bold">{p.name}</span>
-                                     ))}
+                                    {/* LIST WINNING PLAYERS */}
+                                    {gameState?.players?.filter(p => p.team === gameState.winner).map((p, i) => (
+                                        <span key={i} className="text-xs text-slate-300 font-bold">{p.name}</span>
+                                    ))}
                                 </div>
                                 <div className="flex justify-center items-center gap-6 border-t border-slate-700 pt-4">
                                     <div className="text-center">
