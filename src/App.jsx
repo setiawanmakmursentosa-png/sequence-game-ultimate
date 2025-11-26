@@ -40,11 +40,11 @@ import {
   User,
   Brain,
   Zap,
-  Skull,
+  Skull, // Added Skull icon for Jack 1 (Remove)
   Edit,
   FileText, 
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATION (Mandatory Canvas Globals) ---
@@ -109,13 +109,41 @@ const FAMILY_AVATARS = [
     { emoji: '👧', label: 'Anak Pr' }, { emoji: '👧🏼', label: 'Pr Pth' }, { emoji: 'Pr Htm' }, { emoji: '🎀', label: 'Pr Pita' }, { emoji: '🧚‍♀️', label: 'Pr Peri' }
 ];
 
+// Reference to the global audio context to prevent re-creation issues
+let audioContextRef = null;
+
+const getAudioContext = () => {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return null;
+
+    if (!audioContextRef) {
+        audioContextRef = new AudioContext();
+    }
+    return audioContextRef;
+};
+
+// Function to ensure AudioContext is in 'running' state after a user gesture
+const initializeAudioContext = () => {
+    const ctx = getAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(e => console.error("Failed to resume AudioContext:", e));
+    }
+};
+
 // --- AUDIO SYNTHESIZER ---
 const playSynthSound = (type) => {
+    // Perbaikan 1: Gunakan getAudioContext untuk memastikan konteks terinisialisasi
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    
+    // Ensure the context is running (especially necessary on mobile browsers)
+    if (ctx.state === 'suspended') {
+        initializeAudioContext();
+        // If still suspended after resume attempt, defer or skip playing
+        if (ctx.state !== 'running') return; 
+    }
+
     try {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) return;
-        
-        const ctx = new AudioContext();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         
@@ -379,71 +407,95 @@ const PokerChip = ({ team, rank, suit, isWild }) => {
     );
 };
 
+// --- KARTU WAJAH (FACE CARDS) SVGs - DIHAPUS KARENA SUDAH TIDAK DIGUNAKAN ---
+
+// const KingFaceIcon = ... (Dihapus)
+// const QueenFaceIcon = ... (Dihapus)
+// --- END KARTU WAJAH (FACE CARDS) SVGs ---
+
+
 const RealCardFace = ({ rank, suit, type, isHand = false }) => {
     // Elegant Board: Pale Yellow Background, Dark Text
-    const isRed = ['♥','♦'].includes(suit);
-    const boardBg = 'bg-amber-50'; // Pale Yellow (Kuning Langsat)
-    const cardTextColor = isRed ? '#dc2626' : '#1f2937'; 
-    const isFace = ['J', 'Q', 'K'].includes(rank);
-    const isJack = rank === 'J';
+    const isRedSuit = ['♥','♦'].includes(suit);
     
-    let jackLabel = "";
-    if (isJack) jackLabel = type === 'wild' ? "j2" : "j1";
+    // 1. Tentukan warna latar belakang kartu di papan
+    let cardBackgroundColor = 'bg-amber-50'; // Default: Kuning Langsat (Pale Yellow)
 
-    // RESPONSIVE TEXT SIZING
-    const rankSize = 'text-[6px] md:text-[8px]'; // Hand Card
-    const suitSize = 'text-[6px] md:text-[8px]'; // Hand Card
-    const centerSize = 'text-4xl md:text-6xl'; // Board Card
+    // Logika K/Q: Jika bukan kartu di tangan DAN rank adalah K atau Q, ubah ke abu-abu muda
+    if (!isHand && (rank === 'K' || rank === 'Q')) {
+        cardBackgroundColor = 'bg-slate-200'; // Abu-abu Muda (Light Gray)
+    }
+
+    // Tentukan ukuran font yang berbeda berdasarkan apakah itu kartu di tangan atau di papan
+    let rankFontSize = isHand ? 'text-2xl md:text-4xl' : 'text-sm md:text-lg';
+    let suitFontSize = isHand ? 'text-4xl md:text-6xl' : 'text-xl md:text-3xl';
+    
+    // --- COLOR AND STYLE DETERMINATION ---
+    let cardTextColor;
+    let isJack = rank === 'J';
+    let isFace = ['K', 'Q', 'A'].includes(rank); 
+    let contentRank = rank;
+
+    if (isJack) {
+        // J1 (Remove) / J2 (Wild)
+        if (type === 'remove') {
+            // J1: Warna Abu-abu/Gelap
+            cardTextColor = '#1f2937'; // Dark Gray/Black
+            contentRank = 'J1';
+        } else { // type === 'wild'
+            // J2: Warna Kuning/Emas
+            cardTextColor = '#f59e0b'; // Amber/Yellow
+            contentRank = 'J2';
+        }
+    } else if (isFace) {
+        // K, Q, A: Warna yang lebih tebal/gelap untuk membedakan dari 2-10
+        cardTextColor = isRedSuit ? '#b91c1c' : '#000000'; // Darker Red / Pure Black
+    } else {
+        // 2-10: Warna standar
+        cardTextColor = isRedSuit ? '#dc2626' : '#1f2937'; 
+    }
+    // --- END COLOR AND STYLE DETERMINATION ---
+
 
     return (
         <div className={`
             relative w-full h-full rounded-[4px] md:rounded-[6px] flex flex-col justify-between overflow-hidden select-none font-serif
-            ${isHand ? 'bg-white border border-gray-300 shadow-md p-1.5' : `${boardBg} p-[1px] shadow-sm border border-slate-950/10`}
+            ${isHand ? 'bg-white border-2 border-amber-800/50 shadow-xl p-2' : `${cardBackgroundColor} p-[1px] shadow-sm border border-slate-950/10`}
         `} style={{ color: cardTextColor }}>
             
-            {/* Corner Rank/Suit - Top Left (Only visible on Hand Cards, hidden on Board Cards) */}
-            {isHand && (
-              <div className="flex flex-col items-center leading-none absolute top-0.5 left-0.5 z-10">
-                  <div className={`${rankSize} font-bold`}>{rank}</div>
-                  <div className={`${suitSize}`}>{suit}</div>
-              </div>
-            )}
-            
-            {/* Jack Label (Only visible on Hand Cards) */}
-            {isJack && isHand && <div className={`absolute top-0.5 right-1 font-sans font-bold text-[10px] md:text-xs text-yellow-500'}`}>{jackLabel}</div>}
-            
-            {/* Center Content */}
-            <div className="flex-1 flex items-center justify-center w-full h-full p-1">
-                {isHand ? (
-                    isFace ? (
-                        // HAND CARD STYLE: Boxed Crown
-                        <div className={`w-full h-[75%] border border-opacity-20 flex flex-col items-center justify-center relative rounded 
-                            ${isRed ? 'border-red-500 bg-red-50' : 'border-gray-800 bg-gray-50'}
-                        `}>
-                            <Crown size={20} strokeWidth={1.5} className="mb-1 opacity-70 md:w-7 md:h-7" />
-                            <div className="text-2xl md:text-3xl leading-none font-bold">{suit}</div>
+            {/* Center Content: Icon/Rank/Suit */}
+            <div className="flex-1 flex items-center justify-center w-full h-full p-1 relative">
+                {isJack ? (
+                    // JACK CARD: Hanya LOGO SUIT di tengah, J1/J2 di atas
+                    <div className="flex flex-col items-center justify-center pt-1 leading-none">
+                        
+                        {/* J1/J2 Label (1/4 size of logo) at the top - Diberi warna spesifik */}
+                        <div className={`
+                            absolute top-0 left-1/2 transform -translate-x-1/2 
+                            text-[8px] md:text-[10px] font-black uppercase tracking-wider
+                        `} style={{
+                            // Ukuran J1/J2 di tangan diubah menjadi 16px (medium)
+                            fontSize: isHand ? '16px' : '8px', 
+                            color: isJack && type === 'wild' ? '#d97706' : '#334155'
+                        }}>
+                            {contentRank}
                         </div>
-                    ) : (
-                        // HAND CARD STYLE: Number Card
-                         <div className={`${centerSize} transform scale-y-90 drop-shadow-sm`} style={{color: cardTextColor}}>{suit}</div>
-                    )
+                        
+                        {/* Main Suit Icon (Logo Karakter Kartu) in the center */}
+                        <div className={`${suitFontSize} font-bold`} style={{color: cardTextColor}}>
+                            {suit}
+                        </div>
+                    </div>
                 ) : (
-                    // BOARD CARD (isHand=false): Simplified Rank/Suit display in the center.
-                    <div className="flex flex-col items-center justify-center pt-1" style={{color: cardTextColor}}>
-                         {/* Text for Rank & Suit (Centralized) */}
-                        <div className={`text-sm md:text-lg leading-none font-black`}>{rank}</div>
-                        <div className={`text-3xl md:text-5xl leading-none font-bold drop-shadow-sm`}>{suit}</div>
+                    // STANDARD CARD (2-A, termasuk K dan Q): Rank/Suit Side-by-Side (Berdampingan)
+                    <div className="flex items-center justify-center pt-1 leading-none gap-0.5">
+                        {/* Rank (Angka/Huruf) */}
+                        <div className={`${rankFontSize} font-black`} style={{color: cardTextColor}}>{rank}</div>
+                        {/* Suit (Logo Karakter Kartu) */}
+                        <div className={`${suitFontSize} font-bold`} style={{color: cardTextColor}}>{suit}</div>
                     </div>
                 )}
             </div>
-            
-            {/* Bottom Corner (Rotated) - Only visible on Hand Cards */}
-            {isHand && (
-                <div className="flex flex-col items-center leading-none absolute bottom-0.5 right-0.5 transform rotate-180">
-                    <div className={`${rankSize} font-bold`}>{rank}</div>
-                    <div className={`${suitSize}`}>{suit}</div>
-                </div>
-            )}
         </div>
     );
 };
@@ -506,6 +558,9 @@ export default function App() {
   const [highlightedCells, setHighlightedCells] = useState([]); 
   const timerRef = useRef(null);
 
+  // Perubahan 1: State untuk Kartu yang dipilih di tangan
+  const [selectedCardIndex, setSelectedCardIndex] = useState(null); 
+
   // States
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -532,6 +587,30 @@ export default function App() {
   const [chatMessage, setChatMessage] = useState('');
   const [unreadMsg, setUnreadMsg] = useState(false);
   const [consecutiveMissedTurns, setConsecutiveMissedTurns] = useState(0);
+
+  // --- PERBAIKAN 1: Inisialisasi Audio Context dengan Interaksi Pertama ---
+  useEffect(() => {
+    // Fungsi untuk mengaitkan inisialisasi AudioContext ke interaksi pengguna
+    const activateAudio = () => {
+        initializeAudioContext();
+        // Hapus listener setelah diinisialisasi
+        window.removeEventListener('mousedown', activateAudio);
+        window.removeEventListener('touchstart', activateAudio);
+        window.removeEventListener('keydown', activateAudio);
+    };
+
+    // Tambahkan listener untuk interaksi
+    window.addEventListener('mousedown', activateAudio);
+    window.addEventListener('touchstart', activateAudio);
+    window.addEventListener('keydown', activateAudio);
+
+    return () => {
+        window.removeEventListener('mousedown', activateAudio);
+        window.removeEventListener('touchstart', activateAudio);
+        window.removeEventListener('keydown', activateAudio);
+    };
+  }, []);
+  // --- END PERBAIKAN 1 ---
 
   // --- NETWORK MONITORING ---
   useEffect(() => {
@@ -579,10 +658,10 @@ export default function App() {
   // --- GAME OVER DELAY EFFECT ---
   useEffect(() => {
       if (gameState?.winner || gameOverReason) {
-          // Wait 3 seconds before showing the game over screen
+          // PERUBAHAN 4: Jeda 1 detik sebelum menampilkan game over screen (sebelumnya 3000ms)
           const timer = setTimeout(() => {
               setShowGameOverScreen(true);
-          }, 3000);
+          }, 1000); 
           return () => clearTimeout(timer);
       } else {
           setShowGameOverScreen(false);
@@ -626,6 +705,7 @@ export default function App() {
             setTimeLeft(300); 
             setHighlightedCells([]); 
             setConsecutiveMissedTurns(0); 
+            setSelectedCardIndex(null); // Clear selection on turn change
           }
         }
       });
@@ -683,13 +763,15 @@ export default function App() {
 
   const triggerInterstitial = (callback) => {
       setInterstitialStep(1);
+      // PERUBAHAN 4: Jeda 1 detik (sebelumnya 2000ms)
       setTimeout(() => {
           setInterstitialStep(2);
+          // PERUBAHAN 4: Jeda 1 detik (sebelumnya 2000ms)
           setTimeout(() => {
               setInterstitialStep(0);
               if (callback) callback();
-          }, 2000); // 2 Seconds
-      }, 2000); // 2 Seconds
+          }, 1000); // 1 Seconds
+      }, 1000); // 1 Seconds
   };
 
   // --- LOGIC: RECYCLE DEAD CARD ---
@@ -721,6 +803,7 @@ export default function App() {
         updatedPlayers[gameState.currentTurnIndex].hand = newHand;
         await updateDoc(roomRef, { deck: newDeck, players: updatedPlayers });
     }
+    setSelectedCardIndex(null); // Clear selection after recycling
   };
 
   const handleCreateRoom = async (playersCount) => {
@@ -786,6 +869,7 @@ export default function App() {
     setRoomCode('');
     setView('menu');
     setNotification('');
+    setSelectedCardIndex(null); // Clear selection
   };
 
   const handleOfflineStart = (difficulty = 'easy') => {
@@ -845,19 +929,7 @@ export default function App() {
     const isMyTurn = (gameMode === 'offline' && player.uid === 'me') || (gameMode === 'online' && player.uid === user.uid);
     if (!isMyTurn) return;
 
-    const validMoves = getValidMoves(player.hand[cardIndex], gameState.board, player.team);
-    const isMoveValid = validMoves.some(m => m.r === r && m.c === c);
-
-    if (!isMoveValid) { 
-        if (hintsEnabled) {
-            setNotification("Langkah Tidak Valid!"); 
-            vibrate(); 
-            playSound('error');
-            setTimeout(() => setNotification(''), 1000); 
-        }
-        return; 
-    }
-
+    // VALIDATION IS NOW HANDLED IN BOARD CLICK, so we assume cardIndex is valid here
     const newBoard = JSON.parse(JSON.stringify(gameState.board));
     const card = player.hand[cardIndex];
     
@@ -900,6 +972,7 @@ export default function App() {
     vibrate(); 
     setHighlightedCells([]);
     setConsecutiveMissedTurns(0); 
+    setSelectedCardIndex(null); // Clear selection after playing
 
     if (gameMode === 'offline') {
       setGameState(prev => ({
@@ -1044,35 +1117,53 @@ export default function App() {
           }
           .animate-float { animation: float 3s ease-in-out infinite; }
           .animate-float-slow { animation: float-slow 8s ease-in-out infinite; }
+          
+          /* PERUBAHAN 2: ANIMASI BORDER EMAS BERJALAN */
+          @keyframes border-run-gold {
+              0% { background-position: 0% 50%; }
+              100% { background-position: 200% 50%; }
+          }
+          .animated-border-overlay {
+              position: absolute;
+              /* Sedikit lebih besar dari border radius utama */
+              inset: -3px; 
+              border-radius: 43px; 
+              /* Gradient Emas */
+              background: linear-gradient(135deg, #FFD700 0%, #FFA500 25%, #FFD700 50%, #FFA500 75%, #FFD700 100%);
+              background-size: 200% 200%;
+              animation: border-run-gold 5s linear infinite;
+              z-index: -1;
+              filter: blur(1px); /* Efek cahaya */
+          }
         `}</style>
 
-        {/* PERUBAHAN: LATAR BELAKANG LOGO KARTU BESAR YANG SAMAR (6 Bentuk, Sudut Miring, Tengah Lurus) */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none flex items-center justify-center opacity-10">
+        {/* PERBAIKAN: PENONJOLAN WARNA LATAR BELAKANG LOGO KARTU (opacity-70, warna lebih intens) */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none flex items-center justify-center opacity-70">
             {/* Array untuk 6 logo kartu dengan posisi, warna, dan rotasi yang berbeda */}
             {[
                 // 4 Logo Sudut (Miring 10-20 derajat)
-                { suit: '♠', color: 'text-black/70', size: '40vh', top: '0%', left: '0%', rotation: '-15deg', x: 0, y: 0, opacity: '0.2' }, // Kiri Atas
-                { suit: '♥', color: 'text-red-600/70', size: '35vh', top: '0%', right: '0%', rotation: '15deg', x: 0, y: 0, opacity: '0.2' }, // Kanan Atas
-                { suit: '♦', color: 'text-red-600/70', size: '50vh', bottom: '0%', left: '0%', rotation: '5deg', x: 0, y: 0, opacity: '0.2' }, // Kiri Bawah
-                { suit: '♣', color: 'text-black/70', size: '30vh', bottom: '0%', right: '0%', rotation: '-25deg', x: 0, y: 0, opacity: '0.2' }, // Kanan Bawah
+                // Menggunakan text-slate-900 dan text-red-700 untuk warna yang lebih intens
+                { suit: '♠', color: 'text-slate-900', size: '40vh', top: '0%', left: '0%', rotation: '-15deg', x: 0, y: 0, opacity: '1.0' }, // Kiri Atas (Hitam lebih menonjol)
+                { suit: '♥', color: 'text-red-700', size: '35vh', top: '0%', right: '0%', rotation: '15deg', x: 0, y: 0, opacity: '1.0' }, // Kanan Atas (Merah lebih menonjol)
+                { suit: '♦', color: 'text-red-700', size: '50vh', bottom: '0%', left: '0%', rotation: '5deg', x: 0, y: 0, opacity: '1.0' }, // Kiri Bawah (Merah lebih menonjol)
+                { suit: '♣', color: 'text-slate-900', size: '30vh', bottom: '0%', right: '0%', rotation: '-25deg', x: 0, y: 0, opacity: '1.0' }, // Kanan Bawah (Hitam lebih menonjol)
                 
                 // 2 Logo Tengah (Lurus 0 derajat)
-                { suit: '♥', color: 'text-red-600/70', size: '40vh', top: '35%', left: '50%', rotation: '0deg', x: '-50%', y: '-50%', opacity: '0.2' }, // Tengah Atas
-                { suit: '♣', color: 'text-black/70', size: '45vh', bottom: '25%', left: '50%', rotation: '0deg', x: '-50%', y: '-50%', opacity: '0.2' }, // Tengah Bawah
+                { suit: '♥', color: 'text-red-700', size: '40vh', top: '35%', left: '50%', rotation: '0deg', x: '-50%', y: '-50%', opacity: '1.0' }, // Tengah Atas (Merah lebih menonjol)
+                { suit: '♣', color: 'text-slate-900', size: '45vh', bottom: '25%', left: '50%', rotation: '0deg', x: '-50%', y: '-50%', opacity: '1.0' }, // Tengah Bawah (Hitam lebih menonjol)
             ].map((item, index) => (
                 <div 
                     key={index}
-                    className="absolute font-serif leading-none transition-all duration-500 ease-out"
+                    className={`absolute font-serif leading-none transition-all duration-500 ease-out ${item.color}`} // Menggunakan item.color sebagai Tailwind class
                     style={{
                         fontSize: item.size,
-                        color: item.color,
                         top: item.top,
                         bottom: item.bottom,
                         left: item.left,
                         right: item.right,
                         // Gunakan translate untuk penempatan yang lebih akurat (terutama di tengah)
                         transform: `translate(${item.x}, ${item.y}) rotate(${item.rotation})`, 
-                        opacity: item.opacity, // Opacity disetel ke 0.2 (20%) untuk kesan lebih jelas
+                        opacity: item.opacity, // Opacity disetel ke 1.0 (100%) untuk mendapatkan warna penuh
                     }}
                 >
                     {item.suit}
@@ -1111,7 +1202,7 @@ export default function App() {
                                 <span className="text-[8px] font-black uppercase tracking-wider leading-none">save</span>
                             </button>
                         </div>
-                        {/* PERBAIKAN: Menghapus kurung kurawal '}' yang berlebihan di akhir teks, yang menyebabkan error JSX */}
+                        {/* Teks jumlah karakter - FIX: Menghapus kurung kurawal berlebih */}
                         <div className="text-right text-[10px] text-slate-500 mt-1">{playerName.length}/20</div>
                     </div>
 
@@ -1133,95 +1224,101 @@ export default function App() {
             </div>
         )}
 
-        {/* CONTAINER MENU UTAMA - DIUBAH DARI SLATE-800/60 KE WHITE/70 */}
-        <div className="relative w-full max-w-md bg-white/70 backdrop-blur-md p-8 rounded-[40px] shadow-2xl border border-slate-200/50 flex flex-col items-center gap-6 mt-10 z-10">
-            {/* AMAN FIREBASE BADGE (UPDATED) */}
-            <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-green-100/40 px-3 py-1.5 rounded-full border border-green-500/50 shadow-sm">
-                <ShieldCheck size={16} className="text-green-600"/>
-                <span className="text-[10px] font-black text-green-600 tracking-wide">AMAN FIREBASE</span>
-            </div>
-
-            {/* 3D MOVING CARDS */}
-            <div className="mb-2 w-full flex justify-center pt-6 pb-2">
-                <CardFan3D />
-            </div>
-
-            {/* TITLE */}
-            <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-600 to-yellow-800 drop-shadow-sm tracking-tight -mt-4 mb-2">SEQUENCE</h1>
-
-            {/* PLAYER PROFILE - DIUBAH DARI SLATE-900/50 KE SLATE-100/80 */}
-            <div className="w-full bg-slate-100/80 p-2 rounded-2xl flex items-center gap-3 border border-slate-300 shadow-sm relative group cursor-pointer hover:bg-slate-200/80 transition-colors" onClick={() => setShowAvatarModal(true)}>
-                 <div className="w-14 h-14 rounded-xl bg-slate-200 flex items-center justify-center overflow-hidden border-2 border-yellow-500/50 shadow-md shrink-0">
-                     <span className="text-3xl">{playerAvatar}</span>
-                 </div>
-                 <div className="flex-1">
-                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5 ml-1">Nama Pemain</label>
-                     <div className="flex items-center gap-2">
-                         <span className="font-bold text-slate-800 text-lg truncate max-w-[150px]">{playerName}</span>
-                         <Edit size={14} className="text-slate-500"/>
-                     </div>
-                 </div>
-            </div>
-
-            {/* GAME MODES */}
-            <div className="w-full space-y-3">
-                {/* VS ROBOT TOGGLE (UPDATED LIGHT THEME BUTTON) */}
-                {!showBotLevels ? (
-                    <button onClick={()=>setShowBotLevels(true)} className="w-full bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-400 hover:to-yellow-300 text-slate-900 p-4 rounded-2xl font-black flex items-center justify-center gap-3 shadow-lg shadow-yellow-500/20 transition-all hover:scale-[1.02] active:scale-95 group border-2 border-yellow-300">
-                        <Bot className="group-hover:rotate-12 transition-transform text-slate-900"/> VS ROBOT
-                    </button>
-                ) : (
-                    // DIUBAH DARI SLATE-900 KE SLATE-200
-                    <div className="bg-slate-200 p-2 rounded-2xl border border-slate-300 animate-fade-in-down">
-                         <div className="flex justify-between items-center px-2 mb-2">
-                            <span className="text-xs font-bold text-slate-600 flex items-center gap-1"><Brain size={12}/> PILIH LEVEL</span>
-                            <button onClick={()=>setShowBotLevels(false)}><X size={14} className="text-slate-600"/></button>
-                         </div>
-                         <div className="grid grid-cols-3 gap-2">
-                            <button onClick={()=>handleOfflineStart('easy')} className="bg-white hover:bg-green-50/70 text-green-600 py-3 rounded-xl font-bold text-xs shadow-sm border border-slate-300 hover:border-green-400/50 flex flex-col items-center gap-1 transition-all">
-                                <Smile size={18}/> MUDAH
-                            </button>
-                            <button onClick={()=>handleOfflineStart('medium')} className="bg-white hover:bg-yellow-50/70 text-yellow-600 py-3 rounded-xl font-bold text-xs shadow-sm border border-slate-300 hover:border-yellow-400/50 flex flex-col items-center gap-1 transition-all">
-                                <Zap size={18}/> SEDANG
-                            </button>
-                            <button onClick={()=>handleOfflineStart('hard')} className="bg-white hover:bg-red-50/70 text-red-600 py-3 rounded-xl font-bold text-xs shadow-sm border border-slate-300 hover:border-red-400/50 flex flex-col items-center gap-1 transition-all">
-                                <Skull size={18}/> SUSAH
-                            </button>
-                         </div>
-                    </div>
-                )}
-
-                <div className="flex gap-3">
-                    {/* ELEGANT LIGHT THEME BUTTONS */}
-                    <button onClick={()=>handleCreateRoom(2)} className="flex-1 bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white p-4 rounded-2xl font-bold text-sm shadow-lg shadow-indigo-500/20 transition-all transform hover:-translate-y-0.5 border border-indigo-700 flex items-center justify-center gap-2 group">
-                        <Swords size={18} className="group-hover:scale-110 transition-transform"/> 1 VS 1
-                    </button>
-                    <button onClick={()=>handleCreateRoom(4)} className="flex-1 bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white p-4 rounded-2xl font-bold text-sm shadow-lg shadow-indigo-500/20 transition-all transform hover:-translate-y-0.5 border border-indigo-700 flex items-center justify-center gap-2 group">
-                        <Swords size={18} className="group-hover:scale-110 transition-transform"/> 2 VS 2
-                    </button>
+        {/* CONTAINER MENU UTAMA - DIBUNGKUS DENGAN WRAPPER UNTUK EFEK BORDER */}
+        <div className="relative w-full max-w-md p-1 mt-10 z-10">
+             {/* PERUBAHAN 2: OVERLAY BORDER EMAS BERJALAN */}
+             <div className="animated-border-overlay"></div>
+             
+             <div className="relative w-full bg-white/70 backdrop-blur-md p-8 rounded-[40px] shadow-2xl border border-slate-200/50 flex flex-col items-center gap-6">
+                
+                {/* AMAN FIREBASE BADGE (UPDATED) */}
+                <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-green-100/40 px-3 py-1.5 rounded-full border border-green-500/50 shadow-sm">
+                    <ShieldCheck size={16} className="text-green-600"/>
+                    <span className="text-[10px] font-black text-green-600 tracking-wide">AMAN FIREBASE</span>
                 </div>
-            </div>
 
-            {/* JOIN CODE (ELEGANT LIGHT STYLE) */}
-            <div className="w-full relative">
-                <input 
-                    value={roomCode} 
-                    onChange={e=>setRoomCode(e.target.value)} 
-                    className="w-full bg-white p-4 rounded-2xl text-center text-slate-900 font-mono tracking-[0.2em] outline-none shadow-inner border-2 border-yellow-500/30 text-lg placeholder-slate-400 focus:border-yellow-500 transition-colors" 
-                    placeholder="KODE ROOM"
-                />
-                <button onClick={handleJoinRoom} className="absolute right-2 top-2 bottom-2 aspect-square bg-green-600 hover:bg-green-500 rounded-xl flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105 active:scale-95"><Play fill="white" size={24}/></button>
-            </div>
+                {/* 3D MOVING CARDS */}
+                <div className="mb-2 w-full flex justify-center pt-6 pb-2">
+                    <CardFan3D />
+                </div>
 
-            {/* PEMISAH GARIS WARNA BAGUS */}
-            <div className="w-full h-1 bg-gradient-to-r from-transparent via-yellow-600 to-transparent mt-4 mb-2 opacity-50"></div>
+                {/* TITLE */}
+                <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-600 to-yellow-800 drop-shadow-sm tracking-tight -mt-4 mb-2">SEQUENCE</h1>
 
-            {/* FOOTER TEXT */}
-            <div className="text-center opacity-70">
-                <p className="text-[10px] font-medium text-slate-600 leading-relaxed">
-                    powered by SETIAWAN <br/>
-                    <span className="text-yellow-600 font-bold">Jangan Lupa Mampir dan Makan di Ayam Bakar Spesial Bibir by WKA</span>
-                </p>
+                {/* PLAYER PROFILE - DIUBAH DARI SLATE-900/50 KE SLATE-100/80 */}
+                <div className="w-full bg-slate-100/80 p-2 rounded-2xl flex items-center gap-3 border border-slate-300 shadow-sm relative group cursor-pointer hover:bg-slate-200/80 transition-colors" onClick={() => setShowAvatarModal(true)}>
+                    <div className="w-14 h-14 rounded-xl bg-slate-200 flex items-center justify-center overflow-hidden border-2 border-yellow-500/50 shadow-md shrink-0">
+                        <span className="text-3xl">{playerAvatar}</span>
+                    </div>
+                    <div className="flex-1">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5 ml-1">Nama Pemain</label>
+                        <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-800 text-lg truncate max-w-[150px]">{playerName}</span>
+                            <Edit size={14} className="text-slate-500"/>
+                        </div>
+                    </div>
+                </div>
+
+                {/* GAME MODES */}
+                <div className="w-full space-y-3">
+                    {/* VS ROBOT TOGGLE (UPDATED LIGHT THEME BUTTON) */}
+                    {!showBotLevels ? (
+                        <button onClick={()=>setShowBotLevels(true)} className="w-full bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-400 hover:to-yellow-300 text-slate-900 p-4 rounded-2xl font-black flex items-center justify-center gap-3 shadow-lg shadow-yellow-500/20 transition-all hover:scale-[1.02] active:scale-95 group border-2 border-yellow-300">
+                            <Bot className="group-hover:rotate-12 transition-transform text-slate-900"/> VS ROBOT
+                        </button>
+                    ) : (
+                        // DIUBAH DARI SLATE-900 KE SLATE-200
+                        <div className="bg-slate-200 p-2 rounded-2xl border border-slate-300 animate-fade-in-down">
+                            <div className="flex justify-between items-center px-2 mb-2">
+                                <span className="text-xs font-bold text-slate-600 flex items-center gap-1"><Brain size={12}/> PILIH LEVEL</span>
+                                <button onClick={()=>setShowBotLevels(false)}><X size={14} className="text-slate-600"/></button>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                                <button onClick={()=>handleOfflineStart('easy')} className="bg-white hover:bg-green-50/70 text-green-600 py-3 rounded-xl font-bold text-xs shadow-sm border border-slate-300 hover:border-green-400/50 flex flex-col items-center gap-1 transition-all">
+                                    <Smile size={18}/> MUDAH
+                                </button>
+                                <button onClick={()=>handleOfflineStart('medium')} className="bg-white hover:bg-yellow-50/70 text-yellow-600 py-3 rounded-xl font-bold text-xs shadow-sm border border-slate-300 hover:border-yellow-400/50 flex flex-col items-center gap-1 transition-all">
+                                    <Zap size={18}/> SEDANG
+                                </button>
+                                <button onClick={()=>handleOfflineStart('hard')} className="bg-white hover:bg-red-50/70 text-red-600 py-3 rounded-xl font-bold text-xs shadow-sm border border-slate-300 hover:border-red-400/50 flex flex-col items-center gap-1 transition-all">
+                                    <Skull size={18}/> SUSAH
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex gap-3">
+                        {/* ELEGANT LIGHT THEME BUTTONS */}
+                        <button onClick={()=>handleCreateRoom(2)} className="flex-1 bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white p-4 rounded-2xl font-bold text-sm shadow-lg shadow-indigo-500/20 transition-all transform hover:-translate-y-0.5 border border-indigo-700 flex items-center justify-center gap-2 group">
+                            <Swords size={18} className="group-hover:scale-110 transition-transform"/> 1 VS 1
+                        </button>
+                        <button onClick={()=>handleCreateRoom(4)} className="flex-1 bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white p-4 rounded-2xl font-bold text-sm shadow-lg shadow-indigo-500/20 transition-all transform hover:-translate-y-0.5 border border-indigo-700 flex items-center justify-center gap-2 group">
+                            <Swords size={18} className="group-hover:scale-110 transition-transform"/> 2 VS 2
+                        </button>
+                    </div>
+                </div>
+
+                {/* JOIN CODE (ELEGANT LIGHT STYLE) */}
+                <div className="w-full relative">
+                    <input 
+                        value={roomCode} 
+                        onChange={e=>setRoomCode(e.target.value)} 
+                        className="w-full bg-white p-4 rounded-2xl text-center text-slate-900 font-mono tracking-[0.2em] outline-none shadow-inner border-2 border-yellow-500/30 text-lg placeholder-slate-400 focus:border-yellow-500 transition-colors" 
+                        placeholder="KODE ROOM"
+                    />
+                    <button onClick={handleJoinRoom} className="absolute right-2 top-2 bottom-2 aspect-square bg-green-600 hover:bg-green-500 rounded-xl flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105 active:scale-95"><Play fill="white" size={24}/></button>
+                </div>
+
+                {/* PEMISAH GARIS WARNA BAGUS */}
+                <div className="w-full h-1 bg-gradient-to-r from-transparent via-yellow-600 to-transparent mt-4 mb-2 opacity-50"></div>
+
+                {/* FOOTER TEXT */}
+                <div className="text-center opacity-70">
+                    <p className="text-[10px] font-medium text-slate-600 leading-relaxed">
+                        powered by SETIAWAN <br/>
+                        <span className="text-yellow-600 font-bold">Jangan Lupa Mampir dan Makan di Ayam Bakar Spesial Bibir by WKA</span>
+                    </p>
+                </div>
             </div>
         </div>
     </div>
@@ -1235,6 +1332,7 @@ export default function App() {
       // LOGIC: Check if room is full
       // Safe check: pastikan gameState ada sebelum akses players
       const isRoomFull = gameState && gameState.players && gameState.players.length === gameState.maxPlayers;
+      const isHost = user?.uid === gameState?.hostId;
 
       return (
           <div className="min-h-screen bg-gradient-to-br from-slate-900 to-indigo-900 flex items-center justify-center p-4">
@@ -1247,11 +1345,18 @@ export default function App() {
                  </button>
 
                  <h2 className="text-2xl font-black text-white mb-6 mt-8 tracking-tight">RUANG TUNGGU</h2>
-                 <div className="bg-slate-900 p-6 rounded-3xl mb-6 cursor-pointer relative group border-2 border-slate-800 hover:border-indigo-500 transition-colors" onClick={()=>{document.execCommand('copy', false, roomCode);setNotification("Disalin")}}>
-                     <div className="text-xs text-slate-400 font-bold mb-2 uppercase tracking-wider flex items-center justify-center gap-2"><Wifi size={12}/> KODE ROOM</div>
-                     <div className="text-4xl font-mono text-yellow-400 tracking-widest font-black drop-shadow-md">{roomCode}</div>
-                     <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity font-bold">KLIK SALIN</div>
+                 
+                 {/* PERUBAHAN: KODE ROOM DENGAN BORDER EMAS BERJALAN DAN BACKGROUND PUTIH */}
+                 <div className="relative w-full p-1 mx-auto mb-6">
+                    <div className="animated-border-overlay" style={{borderRadius: '27px'}}></div>
+                    <div className="bg-white/90 p-6 rounded-3xl cursor-pointer relative group border-2 border-slate-200 transition-colors shadow-lg" onClick={()=>{document.execCommand('copy', false, roomCode);setNotification("Disalin")}}>
+                        <div className="text-xs text-slate-500 font-bold mb-2 uppercase tracking-wider flex items-center justify-center gap-2"><Wifi size={12} className="text-slate-700"/> KODE ROOM</div>
+                        {/* Kode Room menggunakan warna kontras yang gelap */}
+                        <div className="text-4xl font-mono text-yellow-700 tracking-widest font-black drop-shadow-md">{roomCode}</div>
+                        <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity font-bold">KLIK SALIN</div>
+                    </div>
                  </div>
+                 
                  
                  {/* PLAYER LIST */}
                  <div className="space-y-3 mb-8 text-left max-h-60 overflow-y-auto pr-1">
@@ -1278,15 +1383,19 @@ export default function App() {
                           // SIGNAL: ROOM FULL -> SHOW START BUTTON
                         <div className="space-y-3 animate-fade-in">
                               <div className="text-green-400 font-black text-lg tracking-widest animate-pulse">SIAP DIMULAI!</div>
-                              {user?.uid === gameState.players[0].uid ? (
-                                  <button onClick={async()=>{
-                                      if (gameMode==='online') {
-                                          const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
-                                          await updateDoc(roomRef, { status: 'playing' });
-                                      }
-                                  }} className="w-full bg-green-600 hover:bg-green-500 text-white p-4 rounded-2xl font-bold shadow-lg shadow-green-900/20 transition-all active:scale-95 flex items-center justify-center gap-2">
-                                      <Play fill="white" size={18}/> MULAI GAME
-                                  </button>
+                              {isHost ? (
+                                  // PERUBAHAN: EFEK BORDER EMAS BERJALAN PADA TOMBOL START DENGAN BACKGROUND PUTIH
+                                   <div className="relative w-full p-1 mx-auto">
+                                        <div className="animated-border-overlay" style={{borderRadius: '16px'}}></div>
+                                        <button onClick={async()=>{
+                                            if (gameMode==='online') {
+                                                const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
+                                                await updateDoc(roomRef, { status: 'playing' });
+                                            }
+                                        }} className="relative w-full bg-white hover:bg-slate-100 text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-green-900/10 transition-all active:scale-95 flex items-center justify-center gap-2">
+                                            <Play fill="currentColor" size={18}/> MULAI GAME
+                                        </button>
+                                   </div>
                               ) : (
                                   <div className="text-slate-400 text-xs italic">Menunggu Host Memulai...</div>
                               )}
@@ -1338,7 +1447,7 @@ export default function App() {
             </div>
             
             <div className="flex items-center gap-2 md:gap-6">
-                 {/* Timer Display - Dihapus potensi kedipan/tulisan "pukul". Hanya menampilkan durasi 5 menit berjalan mundur. */}
+                 {/* Timer Display - Sudah sesuai permintaan: hanya menampilkan durasi 5:00 */}
                  <div className="bg-slate-900 rounded-lg px-2 py-0.5 md:px-3 md:py-1 text-yellow-400 font-mono text-sm md:text-xl font-bold tracking-widest shadow-inner border border-slate-700">
                      {formatTime(timeLeft)}
                  </div>
@@ -1395,17 +1504,29 @@ export default function App() {
                               return (
                                  <div key={`${r}-${c}`} 
                                        onClick={() => {
-                                            if(!isMyTurn) return;
-                                            const cardIndex = myHand.findIndex(h => {
-                                                if (h.type === 'wild' && !cell.chip && !cell.isCorner) return true;
-                                                if (h.type === 'remove' && cell.chip && cell.chip !== myTeam && !cell.locked && !cell.isCorner) return true;
-                                                if (h.type === 'standard' && h.rank === cell.rank && h.suit === cell.suit && !cell.chip) return true;
-                                                return false;
-                                            });
-                                            if (cardIndex !== -1) playCard(cardIndex, r, c);
-                                            else { 
+                                            // Perubahan 1: Gunakan kartu yang dipilih secara eksplisit
+                                            if (!isMyTurn || selectedCardIndex === null) {
                                                 if (hintsEnabled) {
-                                                     setNotification("Kartu tidak cocok!"); setTimeout(()=>setNotification(''),1000); vibrate(); 
+                                                    setNotification("Pilih kartu di tanganmu terlebih dahulu!"); 
+                                                    vibrate(); 
+                                                    playSound('error');
+                                                    setTimeout(() => setNotification(''), 1000); 
+                                                }
+                                                return;
+                                            }
+
+                                            const card = myHand[selectedCardIndex];
+                                            const validMoves = getValidMoves(card, gameState.board, myTeam);
+                                            const isMoveValid = validMoves.some(m => m.r === r && m.c === c);
+
+                                            if (isMoveValid) {
+                                                playCard(selectedCardIndex, r, c);
+                                            } else {
+                                                 if (hintsEnabled) {
+                                                    setNotification("Langkah Tidak Valid untuk kartu yang dipilih!"); 
+                                                    vibrate(); 
+                                                    playSound('error');
+                                                    setTimeout(() => setNotification(''), 1000); 
                                                 }
                                             }
                                         }}
@@ -1416,7 +1537,7 @@ export default function App() {
                                         `}
                                 >
                                      {!cell.isCorner ? (
-                                         <RealCardFace rank={cell.rank} suit={cell.suit} type={null} isHand={false} />
+                                         <RealCardFace rank={cell.rank} suit={cell.suit} type={cell.type} isHand={false} />
                                      ) : (
                                          // Perubahan #1: Sudut Corner baru (gambar 4 logo kartu silang, warna putih, tanpa tulisan WILD)
                                          <div className="w-full h-full bg-white flex items-center justify-center relative overflow-hidden border border-slate-900/10">
@@ -1449,7 +1570,8 @@ export default function App() {
 
         {/* BOTTOM CONTROLS */}
         <div className="h-40 md:h-44 bg-gradient-to-t from-white via-white/90 to-transparent relative z-40 flex flex-col justify-end pb-2 md:pb-4 shrink-0">
-             {isMyTurn && <div className="absolute top-0 w-full flex justify-center pointer-events-none"><div className="bg-yellow-400 text-yellow-900 font-black px-4 py-1 md:px-6 md:py-2 rounded-full animate-bounce shadow-lg text-xs md:text-sm tracking-wider border border-yellow-500">GILIRANMU</div></div>}
+             {/* PERUBAHAN 2: Menambahkan z-50 agar notifikasi "GILIRANMU" terlihat di atas kartu di tangan */}
+             {isMyTurn && <div className="absolute top-0 w-full flex justify-center pointer-events-none z-50"><div className="bg-yellow-400 text-yellow-900 font-black px-4 py-1 md:px-6 md:py-2 rounded-full animate-bounce shadow-lg text-xs md:text-sm tracking-wider border border-yellow-500">GILIRANMU</div></div>}
              
              <div className="absolute left-2 md:left-6 bottom-20 md:bottom-24 flex flex-col gap-3">
                  <div className="relative">
@@ -1487,23 +1609,43 @@ export default function App() {
              <div className="flex justify-center items-end -space-x-2 md:-space-x-3 h-28 md:h-36 px-2 md:px-4 pb-2 md:pb-4">
                  {myHand.map((card, idx) => {
                      const isDead = isCardDead(card, gameState.board, myTeam);
+                     const isSelected = selectedCardIndex === idx;
+
                      return (
                          <div key={idx} 
                               onClick={() => {
-                                  if (isDead) return; // Prevent playing dead card normally
+                                  if (!isMyTurn || isDead) return;
+
                                   vibrate();
-                                  if (isMyTurn) {
-                                      const valid = getValidMoves(card, gameState.board, myTeam);
+                                  
+                                  // Perubahan 1: Logic Seleksi Kartu
+                                  if (isSelected) {
+                                      // Deselect
+                                      setSelectedCardIndex(null);
+                                      setHighlightedCells([]);
+                                  } else {
+                                      // Select
+                                      setSelectedCardIndex(idx);
                                       if (hintsEnabled) {
+                                         const valid = getValidMoves(card, gameState.board, myTeam);
                                          setHighlightedCells(valid);
                                       } else {
                                          setHighlightedCells([]);
                                       }
                                   }
                               }}
-                              className={`relative w-14 h-24 md:w-20 md:h-32 cursor-pointer transform hover:-translate-y-4 md:hover:-translate-y-8 hover:scale-110 transition-all duration-300 hover:z-50 shadow-xl rounded-lg ${isMyTurn && !isDead ?'brightness-100':'brightness-90 opacity-90'} ${isDead ? 'grayscale-[0.5]' : ''}`}
-                              style={{ transform: `rotate(${(idx-2)*6}deg) translateY(${Math.abs(idx-2)*4}px)` }}
+                              // Ukuran Kartu Di Tangan Diperbesar Sedikit
+                              className={`relative w-16 h-28 md:w-24 md:h-36 cursor-pointer transition-all duration-300 hover:z-50 shadow-xl rounded-lg 
+                                  ${isMyTurn && !isDead ?'brightness-100':'brightness-90 opacity-90'} 
+                                  ${isDead ? 'grayscale-[0.5]' : ''}
+                                  ${isSelected ? 'scale-110 -translate-y-8 md:-translate-y-12 ring-4 ring-yellow-400 z-50' : 'hover:-translate-y-4 md:hover:-translate-y-8 hover:scale-110'}
+                              `}
+                              style={{ 
+                                  // Hilangkan transformasi style jika kartu dipilih, agar efek isSelected yang dominan
+                                  transform: isSelected ? undefined : `rotate(${(idx-2)*6}deg) translateY(${Math.abs(idx-2)*4}px)` 
+                              }}
                          >
+                              {/* PERUBAHAN 3: Border kartu di tangan diubah di RealCardFace */}
                               <RealCardFace rank={card.rank} suit={card.suit} type={card.type} isHand={true} />
                               
                               {/* DEAD CARD INDICATOR / RECYCLE BUTTON */}
@@ -1583,15 +1725,15 @@ export default function App() {
                             <div className="bg-amber-100 w-8 h-8 rounded-full flex items-center justify-center text-amber-600 font-bold shrink-0 text-sm">2</div>
                             <div>
                                 <h3 className="font-bold text-slate-800 text-sm mb-1">Kartu Spesial (Jack)</h3>
-                                <p className="text-slate-500 text-xs mb-1"><span className="text-rose-500 font-bold">j2 (2 Mata):</span> Wild Card. Bisa taruh chip di mana saja.</p>
-                                <p className="text-slate-500 text-xs"><span className="text-slate-700 font-bold">j1 (1 Mata):</span> Remove. Bisa hapus chip lawan yang belum terkunci.</p>
+                                <p className="text-slate-500 text-xs mb-1"><span className="font-bold text-yellow-600">J2 (Wild):</span> Wild Card. Bisa taruh chip di mana saja.</p>
+                                <p className="text-slate-500 text-xs"><span className="font-bold text-slate-700">J1 (Remove):</span> Remove. Bisa hapus chip lawan yang belum terkunci.</p>
                             </div>
                         </div>
                         <div className="flex gap-4 items-start">
                              <div className="bg-red-100 w-8 h-8 rounded-full flex items-center justify-center text-red-600 font-bold shrink-0 text-sm">!</div>
                              <div>
                                  <h3 className="font-bold text-slate-800 text-sm mb-1">Kartu Mati</h3>
-                                 <p className="text-slate-500 text-xs leading-relaxed">Jika kartu di tangan tidak bisa ditaruh (papan penuh), klik tombol <span className="text-red-500 font-bold">Recycle</span> di kartu untuk ganti kartu baru.</p>
+                                 <p className="text-slate-500 text-xs leading-relaxed">Jika kartu di tangan tidak bisa ditaruh (papan penuh), klik tombol <span className="font-bold text-red-500">Recycle</span> di kartu untuk ganti kartu baru.</p>
                              </div>
                         </div>
                         <div className="flex gap-4 items-start">
